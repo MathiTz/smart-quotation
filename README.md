@@ -118,7 +118,7 @@ Steps 2–4 are re-runnable. `pnpm db:reset` drops the volume and redoes all thr
 is the right move any time the database is in a state you do not recognise.
 
 <details id="wait-for-db">
-<summary>Why <code>db:up</code> runs <code>scripts/wait-for-db.ts</code>, and why it is TypeScript</summary>
+<summary>Why <code>db:up</code> runs <code>scripts/wait-for-db.ts</code></summary>
 
 `docker compose up -d` returns as soon as the container is **created**, which is a few seconds
 before Postgres accepts connections. Without a wait, `db:push` runs against a database that is
@@ -129,20 +129,6 @@ The script polls `pg_isready` **inside the container** rather than over the mapp
 official Postgres image starts a temporary server on a Unix socket to run its init scripts, and that
 server accepts local connections while the real one is still unreachable from outside. Probing the
 host port therefore reports ready too early, which is the failure this is meant to prevent.
-
-**On the file extension**, since it is a fair question:
-
-- It used to be `wait-for-db.mjs`. That was **redundant**: the root `package.json` sets
-  `"type": "module"`, so a plain `.js` file here is already ESM and the top-level `await` in the
-  poll loop works either way. `.mjs` was belt-and-braces that bought nothing.
-- It is now `.ts`, run with `tsx`, which is already a dependency because the API dev server uses it.
-  The repository is TypeScript everywhere else and a stray untyped script is a thing people stop
-  reading.
-- It is covered by the root `tsconfig.json` and checked by `pnpm typecheck` — which is the actual
-  argument for the change. A `.ts` file nothing typechecks would have been a worse lie than the
-  `.mjs` it replaced.
-- Vite is not involved. Vite bundles the web app; it has no role in running a Node CLI script. `tsx`
-  is the tool for that.
 
 </details>
 
