@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sq
+      POSTGRES_PASSWORD: sq
+      POSTGRES_DB: smart_quotation
+    ports:
+      - "5433:5432"
+    volumes:
+      - sq-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sq -d smart_quotation"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  sq-pgdata:

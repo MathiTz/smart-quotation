@@ -1,0 +1,39 @@
+{
+  "name": "smart-quotation",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.9.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:api": "pnpm --filter @sq/api dev",
+    "dev:web": "pnpm --filter @sq/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:up": "docker compose up -d && tsx scripts/wait-for-db.ts",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && pnpm db:up && pnpm db:push && pnpm db:seed",
+    "db:push": "pnpm --filter @sq/api db:push",
+    "db:seed": "pnpm --filter @sq/api db:seed",
+    "setup": "pnpm install && pnpm db:up && pnpm db:push && pnpm db:seed",
+    "fixtures": "pnpm --filter @sq/api exec tsx scripts/make-fixtures.ts",
+    "deck:install": "pnpm --dir deck install --ignore-workspace",
+    "deck": "pnpm --dir deck dev",
+    "deck:export": "pnpm --dir deck export"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@tailwindcss/oxide", "esbuild"]
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.18.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

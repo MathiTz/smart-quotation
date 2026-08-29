@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  /*
+   * A light, paper-like surface set: an off-white page with true-white cards
+   * lifted off it by a hairline border. Sourcing work is read in daylight next
+   * to a spreadsheet, so the app should look like the document it is producing.
+   */
+  --color-canvas: oklch(0.981 0.002 265);
+  --color-surface: oklch(1 0 0);
+  --color-surface-2: oklch(0.966 0.003 265);
+  --color-edge: oklch(0.912 0.004 265);
+  --color-edge-strong: oklch(0.86 0.006 265);
+
+  /*
+   * Three text weights, all of which clear 4.5:1 on both `surface` and the
+   * slightly darker `surface-2`. The faintest is the binding constraint: it
+   * carries row metadata and column headers, so it is set from the contrast
+   * requirement rather than from how quiet it looks in isolation.
+   */
+  --color-ink: oklch(0.24 0.01 265);
+  --color-ink-dim: oklch(0.49 0.014 265);
+  --color-ink-faint: oklch(0.54 0.014 265);
+
+  /*
+   * Every status colour is dark enough to be read as text on white. That is
+   * what lets `text-good` and `bg-good/12` be the same token: the tinted badge
+   * background is the text colour at low alpha, so tint and label can never
+   * drift apart the way two hand-picked hex values do.
+   */
+  --color-accent: oklch(0.5 0.15 258);
+  --color-good: oklch(0.52 0.13 152);
+  --color-warn: oklch(0.52 0.12 75);
+  --color-bad: oklch(0.53 0.19 25);
+
+  /* Reserved for the one committing action on a screen. */
+  --color-primary: oklch(0.24 0.008 265);
+  --color-primary-ink: oklch(0.99 0 0);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures everywhere money or quantities appear, so columns align. */
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-in {
+  animation: fade-rise 0.28s ease-out both;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
