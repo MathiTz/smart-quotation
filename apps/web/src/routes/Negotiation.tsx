@@ -2,14 +2,26 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useNavigate, useParams } from "react-router-dom";
 import type { NegotiationStatus, SupplierProfile } from "@sq/shared";
 import { SUPPLIER_2_CURVEBALL_RATIO, formatPaymentTerms } from "@sq/shared";
-import { api, ApiError, streamNegotiation, type Negotiation, type TranscriptEntry } from "../lib/api.js";
-import { Badge, Button, Card, Empty, Hint, Segmented, Spinner, cx } from "../components/ui.js";
+import { api, streamNegotiation, type Negotiation, type TranscriptEntry } from "../lib/api.js";
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorNote,
+  ErrorPage,
+  Hint,
+  Segmented,
+  Spinner,
+  cx,
+} from "../components/ui.js";
+import { errorText } from "../lib/errors.js";
 import { money, pct, qty } from "../lib/format.js";
 import { Transcript } from "../components/Transcript.js";
 import { Comparison, type CostBasis } from "../components/Comparison.js";
 import { Reasoning } from "../components/Reasoning.js";
 
-import { STATUS_COPY } from "../lib/negotiation-status.js";
+import { statusCopy } from "../lib/negotiation-status.js";
 
 /** One reconciliation row: a named cost basis and what it comes to. */
 function Line({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
@@ -31,8 +43,17 @@ export function NegotiationRoute() {
   const [status, setStatus] = useState<NegotiationStatus>("pending");
   const [suppliers, setSuppliers] = useState<SupplierProfile[]>([]);
   const [basis, setBasis] = useState<CostBasis>("effective");
-  const [error, setError] = useState<string | null>(null);
+  // Split for the same reason as the review screen: a failed convert must not
+  // take the transcript and the comparison down with it.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // The stream dying is not an error the user caused, so it reads as a warning
+  // and sits above the transcript rather than beside a button.
+  const [streamLost, setStreamLost] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Null means "whatever is recommended", so the default survives the award
+  // arriving over SSE after the page has already rendered.
+  const [pickedId, setPickedId] = useState<string | null>(null);
 
   // Derived from the negotiation rather than the page load, because a random key
   // per mount is only idempotent until someone reloads: the retry then looks like
@@ -49,13 +70,37 @@ export function NegotiationRoute() {
   }, [id]);
 
   useEffect(() => {
-    api.suppliers().then(setSuppliers).catch(() => setSuppliers([]));
+    let cancelled = false;
+    api
+      .suppliers()
+      .then((list) => {
+        if (!cancelled) setSuppliers(list);
+      })
+      // Supplier profiles are only used to put names to codes, so failing to
+      // load them degrades a label rather than the page.
+      .catch(() => {
+        if (!cancelled) setSuppliers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     let stop = () => {};
+
+    // Anything held from the previous negotiation is wrong for this one. The
+    // selected plan matters most: option ids are positional ("single:supplier_1")
+    // and repeat across negotiations, so a stale pick silently pre-selects a
+    // different plan on a different basket.
+    setNegotiation(null);
+    setEntries([]);
+    setPickedId(null);
+    setLoadError(null);
+    setActionError(null);
+    setStreamLost(false);
 
     api
       .negotiation(id)
@@ -69,15 +114,33 @@ export function NegotiationRoute() {
         // opening rounds are not rendered twice.
         const after = fresh.transcript.at(-1)?.sequence ?? 0;
         stop = streamNegotiation(id, after, {
-          onMessage: (entry) =>
+          onMessage: (entry) => {
+            if (cancelled) return;
             setEntries((prev) =>
               prev.some((e) => e.sequence === entry.sequence) ? prev : [...prev, entry],
-            ),
-          onStatus: setStatus,
-          onDone: () => void refresh(),
+            );
+          },
+          onStatus: (next) => {
+            if (cancelled) return;
+            setStreamLost(false);
+            setStatus(next);
+          },
+          onDone: () => {
+            if (cancelled) return;
+            // The award and the rebuilt plans are not on the stream, so the
+            // finished negotiation has to be re-read before it can be committed.
+            refresh().catch((e) => {
+              if (!cancelled) setActionError(errorText(e));
+            });
+          },
+          onError: () => {
+            if (!cancelled) setStreamLost(true);
+          },
         });
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
+      .catch((e) => {
+        if (!cancelled) setLoadError(errorText(e));
+      });
 
     return () => {
       cancelled = true;
@@ -92,9 +155,6 @@ export function NegotiationRoute() {
     [award],
   );
 
-  // Null means "whatever is recommended", so the default survives the award
-  // arriving over SSE after the page has already rendered.
-  const [pickedId, setPickedId] = useState<string | null>(null);
   const chosenId = pickedId ?? award?.winningOptionId ?? null;
   const chosenScore = award?.scores.find((s) => s.optionId === chosenId) ?? null;
   const overriding = Boolean(award && chosenId !== award.winningOptionId);
@@ -113,12 +173,12 @@ export function NegotiationRoute() {
   async function injectCurveball() {
     if (!id) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     try {
       await api.curveball(id, { supplierCode: "supplier_2", fulfillmentRatio: SUPPLIER_2_CURVEBALL_RATIO });
       setStatus("negotiating");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      setActionError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -127,9 +187,15 @@ export function NegotiationRoute() {
   async function carryOn() {
     if (!id) return;
     setBusy(true);
+    setActionError(null);
     try {
       await api.curveball(id, { skip: true });
       setStatus("negotiating");
+    } catch (e) {
+      // Previously a bare try/finally. A failure here left the page on "paused
+      // for input" with the spinner gone and nothing said, so the negotiation
+      // looked resumed when it was not.
+      setActionError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -138,7 +204,7 @@ export function NegotiationRoute() {
   async function convert(saveAsDraft: boolean) {
     if (!id) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     try {
       // The key stays keyed on the negotiation alone. The server appends the
       // allocation and a hash of the terms, so switching plans already produces a
@@ -146,15 +212,15 @@ export function NegotiationRoute() {
       await api.convert(id, { idempotencyKey, saveAsDraft, optionId: chosenId ?? undefined });
       navigate("/purchase-orders");
     } catch (e) {
-      setError(e instanceof ApiError ? [e.message, e.detail].filter(Boolean).join(" — ") : String(e));
+      setActionError(errorText(e));
       setBusy(false);
     }
   }
 
-  if (error && !negotiation) return <p className="text-sm text-bad">{error}</p>;
+  if (loadError) return <ErrorPage message={loadError} onRetry={() => window.location.reload()} />;
   if (!negotiation) return <Spinner label="Loading negotiation…" />;
 
-  const copy = STATUS_COPY[status];
+  const copy = statusCopy(status);
   const live = status === "negotiating" || status === "scoring";
   const converted = status === "converted";
 
@@ -180,6 +246,26 @@ export function NegotiationRoute() {
           {copy.label}
         </Badge>
       </div>
+
+      {/*
+        Above everything, because an action can fail while the commit card that
+        used to hold the only error slot is not on screen at all — which is the
+        case for the whole of the curveball prompt.
+      */}
+      {actionError && <ErrorNote message={actionError} />}
+
+      {streamLost && !converted && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-4 py-2.5 text-sm text-ink-dim">
+          <Badge tone="warn">Live updates interrupted</Badge>
+          <span>
+            The negotiation is still running on the server — it writes every round to the database,
+            so nothing is lost. Reload to catch up.
+          </span>
+          <Button variant="ghost" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      )}
 
       {status === "suspended" && (
         <Card className="border-warn/40">
@@ -412,7 +498,6 @@ export function NegotiationRoute() {
                   </>
                 )}
 
-                {error && <p className="mt-3 text-sm text-bad">{error}</p>}
 
                 <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                   {busy && <Spinner />}

@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { createRouter } from "./router.js";
 import { purchaseOrderSchema } from "@sq/shared";
 import { confirmPurchaseOrder, getPurchaseOrder, listPurchaseOrders } from "../purchase-orders/commit.js";
 import { drainAll } from "../purchase-orders/outbox.js";
@@ -6,7 +7,7 @@ import { errorResponses } from "./errors.js";
 
 const poJson = z.any();
 
-export const purchaseOrders = new OpenAPIHono();
+export const purchaseOrders = createRouter();
 
 const list = createRoute({
   method: "get",

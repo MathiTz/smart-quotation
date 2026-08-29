@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { PurchaseOrder } from "@sq/shared";
-import { api, ApiError } from "../lib/api.js";
-import { Badge, Button, Card, Empty, Hint, Spinner, cx } from "../components/ui.js";
+import { api } from "../lib/api.js";
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorNote,
+  ErrorPage,
+  Hint,
+  Spinner,
+  cx,
+} from "../components/ui.js";
+import { errorText } from "../lib/errors.js";
 import { dateOnly, explainTerms, money, qty, unitMoney } from "../lib/format.js";
 
 const STATUS_TONE = {
@@ -17,29 +28,41 @@ const STATUS_TONE = {
 export function PurchaseOrdersRoute() {
   const [orders, setOrders] = useState<PurchaseOrder[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     api
       .purchaseOrders()
-      .then(setOrders)
-      .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
+      .then((list) => {
+        if (!cancelled) setOrders(list);
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadError(errorText(e));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function confirm(id: string) {
     setBusy(id);
+    setActionError(null);
     try {
       const updated = await api.confirmPurchaseOrder(id);
       setOrders((prev) => prev?.map((po) => (po.id === id ? updated : po)) ?? null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      // Issuing one order failing is not a reason to hide the other forty. The
+      // list stays; the message appears above it.
+      setActionError(errorText(e));
     } finally {
       setBusy(null);
     }
   }
 
-  if (error) return <p className="text-sm text-bad">{error}</p>;
+  if (loadError) return <ErrorPage message={loadError} onRetry={() => window.location.reload()} />;
   if (!orders) return <Spinner label="Loading purchase orders…" />;
 
   const committed = orders.reduce((sum, po) => sum + po.total, 0);
@@ -60,6 +83,8 @@ export function PurchaseOrdersRoute() {
         </Link>
       </div>
 
+      {actionError && <ErrorNote message={actionError} />}
+
       {orders.length === 0 ? (
         <Empty>
           Upload a quotation, run the negotiation, then convert the winner. Purchase orders land
@@ -73,7 +98,7 @@ export function PurchaseOrdersRoute() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="nums text-sm font-semibold">{po.poNumber}</span>
-                    <Badge tone={STATUS_TONE[po.status]}>{po.status.replace(/_/g, " ")}</Badge>
+                    <Badge tone={STATUS_TONE[po.status] ?? "neutral"}>{po.status.replace(/_/g, " ")}</Badge>
                     {po.termsSnapshot.negotiationRounds > 0 && (
                       <Hint content={po.termsSnapshot.concessions.join(" · ") || "No concessions recorded"}>
                         <Badge>

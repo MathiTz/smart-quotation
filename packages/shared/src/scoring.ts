@@ -43,12 +43,21 @@ export function paymentMilestones(
     .split("/")
     .map((p) => Number(p.trim()))
     .filter((n) => Number.isFinite(n) && n > 0);
+  // Nothing parseable means nothing is known about the schedule. Treating that
+  // as "100% upfront" is the conservative reading — it is the most expensive
+  // schedule, so an unreadable term can never make an option look better than
+  // one whose terms were actually stated.
   if (parts.length === 0) return [{ fraction: 1, dayOffset: 0 }];
+
+  // A negative lead time would put milestones before the order was placed and
+  // turn the cash-flow cost into a discount, which would rank paying early as an
+  // advantage.
+  const window = Number.isFinite(leadTimeDays) && leadTimeDays > 0 ? leadTimeDays : 0;
 
   const total = parts.reduce((a, b) => a + b, 0);
   return parts.map((part, i) => ({
     fraction: part / total,
-    dayOffset: parts.length === 1 ? 0 : (i / (parts.length - 1)) * leadTimeDays,
+    dayOffset: parts.length === 1 ? 0 : (i / (parts.length - 1)) * window,
   }));
 }
 
@@ -64,9 +73,21 @@ export function paymentCashFlowCost(
   leadTimeDays: number,
   annualRate: number = ANNUAL_DISCOUNT_RATE,
 ): number {
-  return paymentMilestones(paymentTerms, leadTimeDays).reduce((cost, m) => {
-    const daysEarly = leadTimeDays - m.dayOffset;
-    return cost + amount * m.fraction * annualRate * (daysEarly / 365);
+  // Both inputs are clamped to the range the formula is meaningful over, and
+  // both failures are ones that would flip the sign of the result rather than
+  // merely distort it. A negative lead time makes every milestone look late and
+  // turns the cost into a discount — paying 100% upfront would then rank as an
+  // advantage. A non-finite amount produces `Infinity * 0` on the milestone paid
+  // at delivery, which is NaN, and a NaN here spreads to every option's score.
+  const principal = Number.isFinite(amount) && amount > 0 ? amount : 0;
+  const window = Number.isFinite(leadTimeDays) && leadTimeDays > 0 ? leadTimeDays : 0;
+  if (principal === 0 || window === 0) return 0;
+
+  return paymentMilestones(paymentTerms, window).reduce((cost, m) => {
+    // Never negative: a milestone cannot fall after delivery, because the
+    // offsets are spread across the window and capped by it.
+    const daysEarly = Math.max(0, window - m.dayOffset);
+    return cost + principal * m.fraction * annualRate * (daysEarly / 365);
   }, 0);
 }
 // #endregion cash-flow
@@ -140,8 +161,16 @@ export function summariseOption(
     leadTimeDays = Math.max(leadTimeDays, alloc.leadTimeDays);
   }
 
-  const switchingPenalty =
-    Math.max(0, option.allocations.length - 1) * SWITCHING_PENALTY_RATE * landedTotal;
+  const extraSuppliers = Math.max(0, option.allocations.length - 1);
+  // Written as a conditional rather than `extraSuppliers * RATE * landedTotal`
+  // because a single-supplier option multiplies by zero, and `0 * Infinity` is
+  // NaN rather than 0. One corrupt price would then make every option's score
+  // NaN, since the normalisation below spans the whole set.
+  const switchingPenalty = extraSuppliers === 0 ? 0 : extraSuppliers * SWITCHING_PENALTY_RATE * landedTotal;
+
+  // Clamped because a shortfall larger than the order would otherwise produce a
+  // negative ratio, and the score is multiplied by it.
+  const coveredQty = Math.max(0, Math.min(option.requestedQty, option.requestedQty - option.uncoveredQty));
 
   return {
     optionId: option.id,
@@ -154,18 +183,32 @@ export function summariseOption(
     qualityRating: landedTotal > 0 ? qualityWeighted / landedTotal : 0,
     supplierCount: option.allocations.length,
     requestedQty: option.requestedQty,
-    coveredQty: option.requestedQty - option.uncoveredQty,
-    coverageRatio: (option.requestedQty - option.uncoveredQty) / option.requestedQty,
+    coveredQty,
+    coverageRatio: option.requestedQty > 0 ? coveredQty / option.requestedQty : 0,
     switchingPenalty,
   };
 }
 
-/** Best value maps to 1, worst to 0. A dimension with no spread scores neutral. */
+/**
+ * Best value maps to 1, worst to 0. A dimension with no spread scores neutral.
+ *
+ * Normalisation is the point in scoring where one bad number stops being one bad
+ * option: `min` and `max` span the whole set, so a single NaN would make every
+ * option's score NaN and the sort order arbitrary. Non-finite values are dropped
+ * from the range, and a value that is itself non-finite scores neutral rather
+ * than poisoning the comparison.
+ */
 function normalise(values: number[], value: number, lowerIsBetter: boolean): number {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length === 0 || !Number.isFinite(value)) return 0.5;
+
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
   if (max - min < 1e-9) return 0.5;
-  const t = (value - min) / (max - min);
+
+  // Clamped because `value` may sit outside the finite range when it was one of
+  // the values excluded above.
+  const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
   return lowerIsBetter ? 1 - t : t;
 }
 
@@ -244,7 +287,11 @@ export function scoreOptions(
 }
 
 function hasSpread(values: number[]): boolean {
-  return Math.max(...values) - Math.min(...values) > 1e-9;
+  const finite = values.filter((v) => Number.isFinite(v));
+  // `Math.max()` of nothing is -Infinity, and the subtraction below would then
+  // report a spread on a dimension that has no usable values at all.
+  if (finite.length === 0) return false;
+  return Math.max(...finite) - Math.min(...finite) > 1e-9;
 }
 
 /**
@@ -258,7 +305,10 @@ export function redistributeWeights(
 ): ScoringWeights {
   const keys = Object.keys(weights) as Array<keyof ScoringWeights>;
   const liveTotal = keys.reduce((sum, k) => sum + (available[k] ? weights[k] : 0), 0);
-  if (liveTotal <= 0) {
+  // `!isFinite` covers the case where a weight arrived as Infinity: the division
+  // below would be Infinity/Infinity, so every weight would come back NaN and no
+  // option would be rankable. An even split is a defensible answer; NaN is not.
+  if (!Number.isFinite(liveTotal) || liveTotal <= 0) {
     const even = 1 / keys.length;
     return { cost: even, quality: even, leadTime: even, paymentTerms: even };
   }

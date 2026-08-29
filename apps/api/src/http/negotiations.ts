@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { createRouter } from "./router.js";
 import { streamSSE } from "hono/streaming";
 import { eq } from "drizzle-orm";
 import { SUPPLIER_2_CURVEBALL_RATIO, convertRequestSchema } from "@sq/shared";
@@ -9,10 +10,11 @@ import { resumeNegotiation, startNegotiation } from "../workflows/runner.js";
 import { convertNegotiation, getPurchaseOrder } from "../purchase-orders/commit.js";
 import { drainAll } from "../purchase-orders/outbox.js";
 import { errorResponses } from "./errors.js";
+import { MAX_NOTE_CHARS, MAX_TIER_QUANTITY } from "./limits.js";
 
 const anyJson = z.any();
 
-export const negotiations = new OpenAPIHono();
+export const negotiations = createRouter();
 
 const start = createRoute({
   method: "post",
@@ -27,9 +29,9 @@ const start = createRoute({
           schema: z.object({
             quotationId: z.string().uuid(),
             /** Defaults to the tier the parser suggested. */
-            tierQuantity: z.number().int().positive().optional(),
+            tierQuantity: z.number().int().positive().max(MAX_TIER_QUANTITY).optional(),
             /** Overrides the note captured at upload, if the user edited it. */
-            note: z.string().optional(),
+            note: z.string().max(MAX_NOTE_CHARS).optional(),
           }),
         },
       },

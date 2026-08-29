@@ -394,6 +394,102 @@ describe("scoring", () => {
   });
 });
 
+// --- one bad number must not take the whole ranking with it -----------------
+
+describe("scoring survives a corrupt option", () => {
+  const constraints: NegotiationConstraints = parseBrandNote("");
+
+  /** A plain, well-formed plan to rank the damaged ones against. */
+  function plan(id: string, unitPrice: number, uncoveredQty = 0) {
+    return {
+      id,
+      label: id,
+      allocations: [
+        {
+          supplierCode: "s",
+          allocationKey: `${id}:s`,
+          lines: [
+            { sku: "A-1", productName: "A", quantity: 1000, unitPrice, lineTotal: unitPrice * 1000 },
+          ],
+          subtotal: unitPrice * 1000,
+          leadTimeDays: 30,
+          paymentTerms: "50/50",
+          qualityRating: 4,
+        },
+      ],
+      notes: [],
+      uncoveredQty,
+      requestedQty: 1000,
+    };
+  }
+
+  const suppliers = { s: { country: "CN" } };
+
+  it("keeps the healthy options rankable when one carries a non-finite price", () => {
+    // Normalisation spans the whole set, so before the guards a single Infinity
+    // made min/max non-finite and every score came back NaN — the sort order
+    // then depended on nothing at all.
+    const ranked = scoreOptions(
+      [plan("good", 10), plan("cheap", 8), plan("broken", Number.POSITIVE_INFINITY)],
+      suppliers,
+      constraints,
+    );
+
+    const healthy = ranked.filter((b) => b.optionId !== "broken");
+    expect(healthy).toHaveLength(2);
+    for (const option of healthy) {
+      expect(Number.isFinite(option.score)).toBe(true);
+    }
+    expect(healthy.find((b) => b.optionId === "cheap")!.score).toBeGreaterThan(
+      healthy.find((b) => b.optionId === "good")!.score,
+    );
+  });
+
+  it("does not turn a single-supplier plan's total into NaN", () => {
+    // The switching penalty multiplies by (suppliers - 1), which is zero here.
+    // `0 * Infinity` is NaN, so this used to poison effectiveTotal even though
+    // the penalty itself should simply not apply.
+    const [only] = scoreOptions([plan("solo", Number.POSITIVE_INFINITY)], suppliers, constraints);
+    expect(Number.isNaN(only!.effectiveTotal)).toBe(false);
+    expect(only!.switchingPenalty).toBe(0);
+  });
+
+  it("never reports covering more or less of the order than was asked for", () => {
+    const [over] = scoreOptions([{ ...plan("over", 10), uncoveredQty: 1500 }], suppliers, constraints);
+    expect(over!.coverageRatio).toBe(0);
+    expect(over!.coveredQty).toBe(0);
+    expect(over!.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it("falls back to an even split rather than NaN weights", () => {
+    const w = redistributeWeights(
+      { cost: Number.POSITIVE_INFINITY, quality: 0.25, leadTime: 0.25, paymentTerms: 0.25 },
+      { cost: true, quality: true, leadTime: true, paymentTerms: true },
+    );
+    for (const value of Object.values(w)) expect(Number.isFinite(value)).toBe(true);
+    expect(w.cost + w.quality + w.leadTime + w.paymentTerms).toBeCloseTo(1, 6);
+  });
+});
+
+describe("payment terms that cannot be read", () => {
+  it("treats an unreadable schedule as the most expensive one, never the cheapest", () => {
+    // Garbage must not make an option look better than one whose terms were
+    // actually stated, so the fallback is 100% upfront rather than free credit.
+    const upfront = paymentCashFlowCost(100_000, "100", 30);
+    for (const garbage of ["", "abc", "0/0", "-40/60", "100/"]) {
+      expect(paymentCashFlowCost(100_000, garbage, 30)).toBeCloseTo(upfront, 6);
+    }
+  });
+
+  it("never prices paying early as a benefit when the lead time is nonsense", () => {
+    // A negative window would give negative day offsets and turn the cost into a
+    // discount, ranking the worst payment schedule as the best.
+    for (const leadTime of [-30, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(paymentCashFlowCost(100_000, "40/60", leadTime)).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
 // --- the curveball end to end ----------------------------------------------
 
 describe("the Supplier 2 curveball", () => {

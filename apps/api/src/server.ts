@@ -61,10 +61,49 @@ function assertModelsUsable(): void {
   console.log(`parser model     : ${describeModel(env.parserModel)}`);
 }
 
+/**
+ * A negotiation runs in the background, so a rejection it fails to catch belongs
+ * to no request and lands here. Since Node 15 the default for that is to kill the
+ * process — which would take the API, the outbox worker and every other running
+ * negotiation down with it, over one bad round.
+ *
+ * So it is logged loudly and the process keeps serving. The negotiation that
+ * caused it is already marked `failed` by the workflow runner, so the damage
+ * stays where it happened. This is a net, not a hiding place: anything caught
+ * here is a bug worth fixing, which is why it prints the whole reason.
+ */
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandled rejection in background work — the API is still serving");
+  console.error(reason instanceof Error ? (reason.stack ?? reason.message) : reason);
+});
+
+/**
+ * An uncaught exception is different in kind: the stack that threw was abandoned
+ * halfway, so a lock may be held or a transaction left open, and the process is
+ * no longer in a state its own code would recognise. Log it and go down, rather
+ * than serve requests out of memory nobody can reason about.
+ */
+process.on("uncaughtException", (error) => {
+  console.error("uncaught exception — shutting down");
+  console.error(error.stack ?? error.message);
+  stopOutboxWorker();
+  process.exit(1);
+});
+
+let closing = false;
+
 async function shutdown() {
+  // Two Ctrl-Cs should not race each other through pool.end().
+  if (closing) return;
+  closing = true;
+
   stopOutboxWorker();
   server.close();
-  await pool.end();
+  try {
+    await pool.end();
+  } catch (error) {
+    console.error("database pool did not close cleanly:", error);
+  }
   process.exit(0);
 }
 

@@ -6,7 +6,7 @@ export type StatusTone = "neutral" | "accent" | "good" | "warn" | "bad";
  * Shared by the negotiation page and the list, so a status cannot be called two
  * different things depending on where you are looking at it from.
  */
-export const STATUS_COPY: Record<NegotiationStatus, { label: string; tone: StatusTone }> = {
+const COPY: Record<NegotiationStatus, { label: string; tone: StatusTone }> = {
   pending: { label: "Getting ready", tone: "neutral" },
   negotiating: { label: "Negotiating", tone: "accent" },
   suspended: { label: "Paused for input", tone: "warn" },
@@ -15,6 +15,21 @@ export const STATUS_COPY: Record<NegotiationStatus, { label: string; tone: Statu
   converted: { label: "Converted to a PO", tone: "good" },
   failed: { label: "Failed", tone: "bad" },
 };
+
+/**
+ * Looked up through a function rather than indexed directly.
+ *
+ * The type says the key is always one of the seven, but the value crossed the
+ * network as JSON and TypeScript did not check it there. A server that gains an
+ * eighth status before the client is redeployed would otherwise return
+ * `undefined` here, and reading `.tone` off it white-screens the whole page —
+ * turning a cosmetic mismatch into an outage. Showing the raw status is worse
+ * than a nice label and much better than nothing.
+ */
+export function statusCopy(status: NegotiationStatus): { label: string; tone: StatusTone } {
+  return COPY[status] ?? { label: String(status).replace(/_/g, " "), tone: "neutral" };
+}
+
 
 /** The statuses where the workflow is still doing something on its own. */
 export const RUNNING: NegotiationStatus[] = ["pending", "negotiating", "scoring"];

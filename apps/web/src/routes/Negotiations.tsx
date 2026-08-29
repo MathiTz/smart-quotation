@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, ApiError, type NegotiationSummary } from "../lib/api.js";
-import { Badge, Button, Empty, Hint, Spinner, cx } from "../components/ui.js";
+import { api, type NegotiationSummary } from "../lib/api.js";
+import { Badge, Button, Empty, ErrorPage, Hint, Spinner, cx } from "../components/ui.js";
+import { errorText } from "../lib/errors.js";
 import { dateOnly, money, qty } from "../lib/format.js";
-import { STATUS_COPY, isRunning, statusRank } from "../lib/negotiation-status.js";
+import { isRunning, statusCopy, statusRank } from "../lib/negotiation-status.js";
 
 type SortKey = "filename" | "status" | "winner" | "total" | "createdAt";
 type SortDir = "asc" | "desc";
@@ -104,20 +105,37 @@ function sortRows(rows: NegotiationSummary[], sort: Sort): NegotiationSummary[] 
  */
 export function NegotiationsRoute() {
   const [rows, setRows] = useState<NegotiationSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
   // Matches the order the API already returns, so the first paint does not move.
   const [sort, setSort] = useState<Sort>({ key: "createdAt", dir: "desc" });
 
   useEffect(() => {
     let cancelled = false;
+    // Polls overlap on a slow connection, and a reply from the older request can
+    // land after the newer one. Without a sequence number the table can jump
+    // backwards — showing "negotiating" for a row that already finished.
+    let issued = 0;
+    let newestApplied = 0;
+    let everLoaded = false;
 
     async function load() {
+      const ticket = ++issued;
       try {
         const next = await api.negotiations();
-        if (!cancelled) setRows(next);
+        if (cancelled || ticket < newestApplied) return next;
+        newestApplied = ticket;
+        everLoaded = true;
+        setRows(next);
+        setLoadError(null);
+        setStale(false);
         return next;
       } catch (e) {
-        if (!cancelled) setError(e instanceof ApiError ? e.message : String(e));
+        if (cancelled) return null;
+        // A failed poll on a table that is already on screen is not a reason to
+        // throw the table away. Only a failed *first* load has nothing to show.
+        if (everLoaded) setStale(true);
+        else setLoadError(errorText(e));
         return null;
       }
     }
@@ -140,7 +158,7 @@ export function NegotiationsRoute() {
 
   const sorted = useMemo(() => (rows ? sortRows(rows, sort) : null), [rows, sort]);
 
-  if (error) return <p className="text-sm text-bad">{error}</p>;
+  if (loadError) return <ErrorPage message={loadError} onRetry={() => window.location.reload()} />;
   if (!rows || !sorted) return <Spinner label="Loading negotiations…" />;
 
   const running = rows.filter((row) => isRunning(row.status)).length;
@@ -171,9 +189,16 @@ export function NegotiationsRoute() {
                 : `${rows.length} negotiation${rows.length === 1 ? "" : "s"}, none running.`}
           </p>
         </div>
-        <Link to="/">
-          <Button variant="secondary">New quotation</Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          {stale && (
+            <Hint content="The last refresh did not reach the server, so these statuses may be behind. The negotiations themselves are unaffected.">
+              <Badge tone="warn">Not refreshing</Badge>
+            </Hint>
+          )}
+          <Link to="/">
+            <Button variant="secondary">New quotation</Button>
+          </Link>
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -209,7 +234,7 @@ export function NegotiationsRoute() {
             </thead>
             <tbody>
               {sorted.map((row) => {
-                const copy = STATUS_COPY[row.status];
+                const copy = statusCopy(row.status);
                 return (
                   <tr key={row.id} className="border-b border-edge/60 last:border-0 hover:bg-surface-2/40">
                     <td className="px-4 py-3">{row.filename}</td>

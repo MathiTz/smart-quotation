@@ -1,13 +1,39 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, ApiError } from "../lib/api.js";
-import { Button, Card, cx, Spinner } from "../components/ui.js";
+import { api } from "../lib/api.js";
+import { Button, Card, ErrorNote, cx, Spinner } from "../components/ui.js";
+import { errorText } from "../lib/errors.js";
 
 const EXAMPLES = [
   "Prioritise lead time over cost. Hard 30 day deadline.",
   "Cheapest wins, but nothing below a 4.2 quality rating.",
   "Keep it to one supplier. Budget $6.5M. Avoid 100% upfront terms.",
 ];
+
+/** Mirrors MAX_UPLOAD_BYTES on the server, so the message arrives before the wait. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The server checks all of this too, and its answer is the one that counts. This
+ * exists so the user hears about an obviously wrong file immediately rather than
+ * after a round trip and a spinner.
+ *
+ * The `accept` attribute is not a substitute: it only filters the file picker,
+ * and a drag-and-drop bypasses it entirely.
+ */
+function rejectFile(file: File): string | null {
+  if (file.size === 0) {
+    return "That file is empty. It may still be syncing from cloud storage — try again in a moment.";
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    return `That file is ${mb} MB and the limit is 10 MB.`;
+  }
+  if (!/\.(xlsx|xlsm|xls)$/i.test(file.name)) {
+    return `This reads Excel workbooks, and "${file.name}" is not one. Export it as .xlsx and try again.`;
+  }
+  return null;
+}
 
 export function UploadRoute() {
   const navigate = useNavigate();
@@ -18,17 +44,31 @@ export function UploadRoute() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** One path for both the picker and the drop zone, so neither skips the checks. */
+  function choose(picked: File | null) {
+    setError(null);
+    if (!picked) {
+      setFile(null);
+      return;
+    }
+    const problem = rejectFile(picked);
+    if (problem) {
+      setFile(null);
+      setError(problem);
+      return;
+    }
+    setFile(picked);
+  }
+
   async function submit() {
-    if (!file) return;
+    if (!file || busy) return;
     setBusy(true);
     setError(null);
     try {
       const quotation = await api.uploadQuotation(file, note);
       navigate(`/quotations/${quotation.id}`);
     } catch (e) {
-      setError(
-        e instanceof ApiError ? [e.message, e.detail].filter(Boolean).join(" — ") : String(e),
-      );
+      setError(errorText(e));
       setBusy(false);
     }
   }
@@ -53,21 +93,27 @@ export function UploadRoute() {
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            const dropped = e.dataTransfer.files[0];
-            if (dropped) setFile(dropped);
+            if (busy) return;
+            choose(e.dataTransfer.files[0] ?? null);
           }}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => !busy && inputRef.current?.click()}
           className={cx(
-            "cursor-pointer rounded-xl border-2 border-dashed px-6 py-12 text-center transition",
+            "rounded-xl border-2 border-dashed px-6 py-12 text-center transition",
+            busy ? "cursor-not-allowed opacity-60" : "cursor-pointer",
             dragging ? "border-accent bg-accent/5" : "border-edge hover:border-ink-faint",
           )}
         >
           <input
             ref={inputRef}
             type="file"
-            accept=".xlsx,.xls"
+            accept=".xlsx,.xlsm,.xls"
             className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            disabled={busy}
+            // Reset so re-picking the same file after an error still fires change.
+            onClick={(e) => {
+              (e.target as HTMLInputElement).value = "";
+            }}
+            onChange={(e) => choose(e.target.files?.[0] ?? null)}
           />
           {file ? (
             <>
@@ -117,8 +163,8 @@ export function UploadRoute() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-bad/40 bg-bad/10 px-3.5 py-2.5 text-sm text-bad">
-            {error}
+          <div className="mt-4">
+            <ErrorNote message={error} />
           </div>
         )}
 

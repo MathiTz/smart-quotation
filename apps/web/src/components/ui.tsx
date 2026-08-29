@@ -249,3 +249,35 @@ export function Spinner({ label }: { label?: string }) {
     </div>
   );
 }
+
+/**
+ * Shown in place of a screen that could not load, where there is genuinely
+ * nothing else to display. Offers a retry, because the most common cause is the
+ * API not being up yet and the second most common is a dropped connection —
+ * both of which are fixed by trying again rather than by navigating away.
+ */
+export function ErrorPage({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="animate-in rounded-xl border border-bad/30 bg-bad/5 px-5 py-6">
+      <h2 className="text-sm font-semibold text-bad">This did not load</h2>
+      <p className="mt-1.5 max-w-2xl text-sm text-ink-dim">{message}</p>
+      {onRetry && (
+        <Button className="mt-4" onClick={onRetry}>
+          Try again
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Shown next to the control that failed, leaving the rest of the screen alone.
+ * An action failing is not a reason to throw away the work already on the page.
+ */
+export function ErrorNote({ message }: { message: string }) {
+  return (
+    <p role="alert" className="rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">
+      {message}
+    </p>
+  );
+}

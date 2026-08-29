@@ -30,7 +30,18 @@ export async function startNegotiation(negotiationId: string): Promise<string> {
       }
     })
     .catch(async (error: unknown) => {
-      await markFailed(negotiationId, error instanceof Error ? error.message : "workflow failed");
+      // Last line of defence for a run nobody is awaiting. If recording the
+      // failure also fails — the database is the usual reason, and it is the
+      // same database `markFailed` writes to — there is nowhere left to put it,
+      // and rethrowing here would only reach the process-level handler as a
+      // rejection with no negotiation attached to it.
+      try {
+        await markFailed(negotiationId, error instanceof Error ? error.message : "workflow failed");
+      } catch (secondary) {
+        console.error(`negotiation ${negotiationId} failed, and so did recording it`);
+        console.error("  original:", error);
+        console.error("  while recording:", secondary);
+      }
     });
 
   return run.runId;

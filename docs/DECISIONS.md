@@ -625,3 +625,88 @@ why. The error is reserved for the one configuration that is internally contradi
 **Ramification:** `.env.example` had to stop shipping `SQ_OFFLINE=0`. It is now left unset, which
 means the app decides from whether a key is present — otherwise the documented first run,
 `cp .env.example .env && pnpm dev`, would have died on the very check meant to protect it.
+
+## One error state per page was one too few
+
+Every screen kept a single `error`, and every screen rendered it the same way: `if (error) return
+<p>{error}</p>`. That is correct for a failed load and wrong for everything else. Clicking "issue to
+supplier" and having it fail replaced the entire purchase-order list with one line of red text —
+the other orders, the totals and the button that failed all disappeared, and the only way back was
+to navigate away and return. The negotiations list did it on a *background poll*: the table had
+loaded fine, one four-second refresh missed, and the page emptied.
+
+Errors are now split by what the user can still do about them. A failed load has nothing to show, so
+it takes the page and offers a retry. A failed action leaves the page alone and puts the message
+next to the control that failed. A failed background refresh does not even do that — the table stays
+and a "Not refreshing" badge appears, because the data on screen is still true, just not current.
+
+**Ramification:** two state variables per route instead of one, and the discipline to pick the right
+one at each call site. The alternative — a toast system — would have been more machinery and would
+have made the "stale but valid" case harder to express, not easier.
+
+## The client had no idea when the negotiation stream died
+
+`EventSource` reports a dropped connection to an `onerror` handler that did not exist. Losing the
+stream therefore looked exactly like a slow round: the transcript stopped growing, the badge stayed
+on "Negotiating", and the page waited forever for an event that was never coming. The negotiation
+itself was fine — it writes every round to Postgres and does not care whether anyone is listening —
+which made this purely a matter of the UI not saying so.
+
+The stream now reports drops, and the page says the thing that is actually true: the negotiation is
+still running, nothing is lost, reload to catch up. Parsing is also guarded per event, because a
+throw inside one listener silently stops the others, and a single malformed frame would otherwise
+freeze the transcript with nothing on screen to explain it.
+
+**Ramification:** the message can appear on a connection that recovers by itself a second later,
+since `EventSource` retries without asking. Recovering clears it. Briefly warning about a drop that
+healed is a much better failure than never mentioning one that did not.
+
+## Validation error shape, and why the hook has to be on every router
+
+`OpenAPIHono` takes a `defaultHook` that turns a Zod failure into the project's `{ error, detail }`
+shape. It was set on the root app, and the three sub-routers were built with a bare
+`new OpenAPIHono()` — so every validated route in the API returned Hono's default instead: a
+serialised `ZodError` with a nested `issues` array. The client reads `body.error` as a string, so
+each of those rendered as `[object Object]`.
+
+The hook does not travel across `app.route()`. Routers are now built by one `createRouter()` factory
+so a router without the hook is not something that can be written by accident, and the client
+coerces `body.error` rather than trusting it.
+
+**Ramification:** the fix is a constructor everyone has to use, which is a convention rather than a
+guarantee. It is enforced by there being no other reason to call `new OpenAPIHono()` in this codebase.
+
+## Guards on the arithmetic, because scoring is comparative
+
+`normalise` maps each option onto the range spanned by all of them, which means the options are not
+independent: one non-finite cost made `min` and `max` non-finite and returned `NaN` for *every*
+option, so the ranking was decided by nothing. The switching penalty had a sharper version of the
+same problem — it multiplies by `allocations.length - 1`, which is zero for a single-supplier plan,
+and `0 * Infinity` is `NaN`, so a corrupt price poisoned the total of a plan the penalty should not
+have applied to at all.
+
+Non-finite values are now excluded from the range rather than allowed to define it, coverage is
+clamped to `[0, 1]` so a shortfall larger than the order cannot produce a negative score, and
+`paymentCashFlowCost` clamps both the amount and the lead-time window. The last one mattered most:
+`daysEarly` was computed from the raw lead time, so a negative one turned the cost of paying early
+into a *discount* and would have ranked 100% upfront as an advantage.
+
+Unreadable payment terms fall back to 100% upfront, which is deliberate. It is the most expensive
+schedule, so a term nobody can parse can never make an option look better than one that stated its
+terms honestly.
+
+**Ramification:** these guards hide bad input rather than reporting it. That is the right trade for a
+comparative score — one bad option should lose, not take the other four down with it — but it means
+a corrupt price shows up as a poor ranking rather than an error. The tests pin the behaviour so the
+guards cannot quietly become the normal path.
+
+## Limits on the free-text inputs
+
+The brand note was `z.string()`, which accepts a megabyte. It is read by regexes with `matchAll`,
+stored on the row, and echoed into every agent prompt on every round — so an unbounded note is a slow
+parse, a large row and a large prompt at once. It is now capped at 2000 characters, tier quantity at
+a million, and uploads reject an empty file before the parser reports it as an unreadable workbook.
+
+Not passing a note remains entirely valid and is the common case: the default weighting applies and
+the UI echoes it back, so "no instruction" and "an instruction that was not understood" never look
+the same on screen.

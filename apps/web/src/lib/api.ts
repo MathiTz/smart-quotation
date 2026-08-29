@@ -131,9 +131,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(body.error ?? "request failed", res.status, body.detail);
+    // Coerced rather than trusted. Every route is meant to answer with a string
+    // `error`, but this is the one place that assumption would fail silently:
+    // an object here renders as "[object Object]" and tells the user nothing.
+    const message = typeof body?.error === "string" ? body.error : `request failed (${res.status})`;
+    const detail = typeof body?.detail === "string" ? body.detail : undefined;
+    throw new ApiError(message, res.status, detail);
   }
-  return res.json() as Promise<T>;
+
+  // A 2xx that is not JSON means something between us and the API answered
+  // instead of the API — a dev-server proxy returning HTML is the usual one.
+  // Without this the caller gets a raw SyntaxError about an unexpected token,
+  // which sends you looking in entirely the wrong place.
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError("the server sent a response that could not be read", res.status);
+  }
 }
 
 export const api = {
@@ -176,6 +190,9 @@ export const api = {
 /**
  * Subscribes to the live transcript. `after` lets a reconnect pick up where it
  * left off instead of replaying the whole negotiation.
+ *
+ * Returns a function that closes the stream. Call it on unmount: an EventSource
+ * left open reconnects on its own forever.
  */
 export function streamNegotiation(
   id: string,
@@ -184,18 +201,54 @@ export function streamNegotiation(
     onMessage: (entry: TranscriptEntry) => void;
     onStatus: (status: NegotiationStatus) => void;
     onDone: (payload: { status: NegotiationStatus; award: Award | null }) => void;
+    /**
+     * The connection dropped. EventSource retries on its own, so this is not
+     * necessarily fatal — but the caller needs to know, because the alternative
+     * is a transcript that stops updating while the page still says "negotiating".
+     */
+    onError?: (info: { willRetry: boolean }) => void;
   },
 ): () => void {
   const source = new EventSource(`/api/negotiations/${id}/stream?after=${after}`);
+  let closed = false;
 
-  source.addEventListener("message", (e) => handlers.onMessage(JSON.parse((e as MessageEvent).data)));
-  source.addEventListener("status", (e) =>
-    handlers.onStatus(JSON.parse((e as MessageEvent).data).status),
-  );
-  source.addEventListener("done", (e) => {
-    handlers.onDone(JSON.parse((e as MessageEvent).data));
+  /**
+   * A throw inside a listener kills that listener's turn, and since every event
+   * arrives on the same source, one malformed frame would otherwise stop the
+   * transcript dead with nothing on screen to say why. Parsing is therefore
+   * guarded per event, and a bad frame is skipped rather than fatal.
+   */
+  function on<T>(event: string, handle: (data: T) => void) {
+    source.addEventListener(event, (e) => {
+      let parsed: T;
+      try {
+        parsed = JSON.parse((e as MessageEvent).data);
+      } catch {
+        console.warn(`discarded an unreadable "${event}" frame from the negotiation stream`);
+        return;
+      }
+      handle(parsed);
+    });
+  }
+
+  on<TranscriptEntry>("message", (entry) => handlers.onMessage(entry));
+  on<{ status: NegotiationStatus }>("status", (data) => handlers.onStatus(data.status));
+  on<{ status: NegotiationStatus; award: Award | null }>("done", (payload) => {
+    handlers.onDone(payload);
+    closed = true;
     source.close();
   });
 
-  return () => source.close();
+  source.addEventListener("error", () => {
+    if (closed) return;
+    // EventSource reports both a transient drop and a dead server the same way.
+    // `readyState` is the only thing that separates them: CLOSED means it has
+    // given up, CONNECTING means it is already trying again.
+    handlers.onError?.({ willRetry: source.readyState !== EventSource.CLOSED });
+  });
+
+  return () => {
+    closed = true;
+    source.close();
+  };
 }

@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, ApiError, type Quotation, type QuotationLine } from "../lib/api.js";
+import { api, type Quotation, type QuotationLine } from "../lib/api.js";
 import {
   Badge,
   Button,
   Card,
   ConfidenceDot,
+  Empty,
+  ErrorNote,
+  ErrorPage,
   Hint,
   Segmented,
   Spinner,
   Stat,
   cx,
 } from "../components/ui.js";
+import { errorText } from "../lib/errors.js";
 import { money, qty, unitMoney } from "../lib/format.js";
 
 type Filter = "all" | "review";
@@ -20,7 +24,12 @@ export function ReviewRoute() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [quotation, setQuotation] = useState<Quotation | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Two error slots, not one. A failed load has nothing to show, so it replaces
+  // the page; a failed "start negotiation" click still has a perfectly good
+  // quotation on screen, and blanking it would throw away the tier and the note
+  // the user had just typed.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [tier, setTier] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -28,14 +37,34 @@ export function ReviewRoute() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
+
+    // Everything derived from the previous quotation is wrong for this one. Left
+    // in place, a stale error blanks a quotation that loaded perfectly well.
+    setQuotation(null);
+    setTier(null);
+    setLoadError(null);
+    setActionError(null);
+
     api
       .quotation(id)
       .then((q) => {
+        // A slow response for the quotation we just navigated away from must not
+        // overwrite the one now on screen: the header would name one file while
+        // the table showed another, and Start would send a mismatched basket.
+        if (cancelled) return;
         setQuotation(q);
-        setTier(q.suggestedTier);
+        setTier(Number.isFinite(q.suggestedTier) ? q.suggestedTier : 0);
         setNote(q.brandNote ?? "");
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
+      .catch((e) => {
+        if (cancelled) return;
+        setLoadError(errorText(e));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const linesAtTier = useMemo(
@@ -53,7 +82,7 @@ export function ReviewRoute() {
 
   const visible = filter === "review" ? linesAtTier.filter(needsReview) : linesAtTier;
 
-  if (error) return <p className="text-sm text-bad">{error}</p>;
+  if (loadError) return <ErrorPage message={loadError} />;
   if (!quotation || tier === null) return <Spinner label="Loading quotation…" />;
 
   const baseline = linesAtTier.reduce((sum, l) => sum + l.lineTotal, 0);
@@ -64,7 +93,7 @@ export function ReviewRoute() {
   async function start() {
     if (!quotation || tier === null) return;
     setStarting(true);
-    setError(null);
+    setActionError(null);
     try {
       const negotiation = await api.startNegotiation({
         quotationId: quotation.id,
@@ -73,7 +102,7 @@ export function ReviewRoute() {
       });
       navigate(`/negotiations/${negotiation.id}`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      setActionError(errorText(e));
       setStarting(false);
     }
   }
@@ -167,24 +196,32 @@ export function ReviewRoute() {
           <Legend tone="bg-bad" label="Weak — please check" />
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wider text-ink-dim">
-                <th className="py-2 pr-3 font-semibold">In the file</th>
-                <th className="py-2 pr-3 font-semibold">Matched to</th>
-                <th className="py-2 pr-3 text-right font-semibold">Qty</th>
-                <th className="py-2 pr-3 text-right font-semibold">Unit</th>
-                <th className="py-2 text-right font-semibold">Line total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((line) => (
-                <LineRow key={`${line.sheetName}-${line.rowNumber}`} line={line} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {visible.length === 0 ? (
+          <Empty>
+            {filter === "review"
+              ? "Nothing needs review at this tier — every line matched confidently."
+              : "No lines were quoted at this tier."}
+          </Empty>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wider text-ink-dim">
+                  <th className="py-2 pr-3 font-semibold">In the file</th>
+                  <th className="py-2 pr-3 font-semibold">Matched to</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Qty</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Unit</th>
+                  <th className="py-2 text-right font-semibold">Line total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((line) => (
+                  <LineRow key={`${line.sheetName}-${line.rowNumber}`} line={line} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       <Card
@@ -209,7 +246,11 @@ export function ReviewRoute() {
           Re-read when you start the negotiation, so what you see above updates to match.
         </p>
 
-        {error && <p className="mt-3 text-sm text-bad">{error}</p>}
+        {actionError && (
+          <div className="mt-3">
+            <ErrorNote message={actionError} />
+          </div>
+        )}
 
         <div className="mt-5 flex items-center justify-end gap-3">
           {starting && <Spinner label="Opening the negotiation…" />}
