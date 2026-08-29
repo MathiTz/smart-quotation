@@ -29,6 +29,7 @@ const ALL_EVENTS: OutboxEventType[] = [
   "sync_accounting",
 ];
 
+// #region terms-hash
 function termsHash(allocation: Allocation): string {
   const canonical = JSON.stringify({
     supplier: allocation.supplierCode,
@@ -40,6 +41,7 @@ function termsHash(allocation: Allocation): string {
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }
+// #endregion terms-hash
 
 /**
  * Sequential and gap-free, allocated by an atomic increment inside the same

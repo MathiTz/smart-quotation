@@ -24,10 +24,14 @@
     "fixtures": "pnpm --filter @sq/api exec tsx scripts/make-fixtures.ts",
     "deck:install": "pnpm --dir deck install --ignore-workspace",
     "deck": "pnpm --dir deck dev",
-    "deck:export": "pnpm --dir deck export"
+    "deck:export": "pnpm --dir deck export",
+    "shots": "tsx scripts/capture-deck-shots.ts"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@tailwindcss/oxide", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",

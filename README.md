@@ -213,6 +213,7 @@ leaving the right-hand side alone — and change the port in `DATABASE_URL` to m
 | `pnpm db:reset` | Drop the volume and rebuild schema and seed |
 | `pnpm fixtures` | Regenerate `quotation_5`–`quotation_10` in `fixtures/` |
 | `pnpm deck` | The presentation deck — see [Presenting](#presenting) |
+| `pnpm shots` | Recapture the UI screenshots the deck uses (needs `pnpm dev` running) |
 
 The API documents itself at http://localhost:8787/docs, which is also reachable at
 http://localhost:5173/docs while the UI dev server is running.
@@ -575,10 +576,13 @@ which reads the real file at build time, shows the span between its `#region` ma
 highlight through it as you click. Slides cannot drift from the code they claim to show, and there
 is no switching to the IDE and scrolling mid-sentence.
 
-It also expects five short silent screen recordings in `deck/public/clips/`, so you can talk over a
-moving demo instead of driving the app and explaining it at the same time. They are gitignored, and
-the deck builds fine without them. [`deck/README.md`](deck/README.md) lists what to capture and how
-long each should be.
+The screens beside the code are **real screenshots of the running app**, committed under
+`deck/public/ui/` and regenerated with `pnpm shots` — a Playwright script that finds a converted and
+an unconverted negotiation through the API and photographs individual cards, so a slide gets the
+panel rather than a picture of a browser window.
+
+This replaced five screen recordings that the deck referenced and nobody had recorded, so every
+video slide rendered an empty player. [`deck/README.md`](deck/README.md) has the detail.
 
 ---
 

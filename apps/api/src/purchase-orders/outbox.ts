@@ -38,6 +38,7 @@ function nextAttemptAt(attempts: number): Date {
  */
 export async function drainOne(): Promise<boolean> {
   return db.transaction(async (tx) => {
+    // #region claim
     const [claimed] = await tx
       .select()
       .from(schema.outbox)
@@ -50,6 +51,7 @@ export async function drainOne(): Promise<boolean> {
       .orderBy(asc(schema.outbox.createdAt))
       .limit(1)
       .for("update", { skipLocked: true });
+    // #endregion claim
 
     if (!claimed) return false;
 
