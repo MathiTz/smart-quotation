@@ -201,6 +201,27 @@ export function NegotiationRoute() {
     }
   }
 
+  /**
+   * Starts the negotiation over. The server clears the partial transcript, so the
+   * local copy has to go too or the old rounds would sit above the new ones until
+   * the next full load.
+   */
+  async function runAgain() {
+    if (!id) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const fresh = await api.retry(id);
+      setEntries([]);
+      setNegotiation(fresh);
+      setStatus(fresh.status);
+    } catch (e) {
+      setActionError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function convert(saveAsDraft: boolean) {
     if (!id) return;
     setBusy(true);
@@ -307,7 +328,15 @@ export function NegotiationRoute() {
 
       {status === "failed" && (
         <Card className="border-bad/40">
-          <p className="text-sm text-bad">{negotiation.error ?? "This negotiation failed."}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-bad">{negotiation.error ?? "This negotiation failed."}</p>
+            <Button onClick={runAgain} disabled={busy}>
+              {busy ? "Starting…" : "Run it again"}
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-ink-faint">
+            Starts over against the same quotation, tier and note. Nothing was ordered.
+          </p>
         </Card>
       )}
 

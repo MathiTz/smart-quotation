@@ -141,9 +141,13 @@ export type NegotiationSummary = {
  * The index of every negotiation, newest first.
  *
  * The work already runs in the background — the HTTP call that starts it returns
- * immediately and the workflow survives a restart — so the only thing stopping
+ * immediately and a suspended run survives a restart — so the only thing stopping
  * someone walking away from a slow negotiation was having nowhere to walk back
  * to. This is that page.
+ *
+ * A run that was mid-round when the process died does not survive; it is swept
+ * into `failed` by `recoverInterrupted` so this list never shows a spinner that
+ * will not stop.
  */
 export async function listNegotiations(): Promise<NegotiationSummary[]> {
   const rows = await db

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { AS_QUOTED, SUPPLIER_2_CURVEBALL_RATIO, convertRequestSchema } from "@sq/shared";
 import { db, schema } from "../db/client.js";
 import { parseBrandNote } from "../negotiation/constraints.js";
+import { resetForRetry } from "../negotiation/engine.js";
 import { listNegotiations, readNegotiation, readTranscript, pollState } from "../negotiation/view.js";
 import { resumeNegotiation, startNegotiation } from "../workflows/runner.js";
 import { convertNegotiation, getPurchaseOrder } from "../purchase-orders/commit.js";
@@ -115,6 +116,42 @@ const read = createRoute({
 negotiations.openapi(read, async (c) => {
   const view = await readNegotiation(c.req.valid("param").id);
   return view ? c.json(view, 200) : c.json({ error: "negotiation not found" }, 404);
+});
+
+const retry = createRoute({
+  method: "post",
+  path: "/negotiations/{id}/retry",
+  summary: "Run a failed negotiation again",
+  description:
+    "Clears the partial transcript and starts over against the same quotation, tier and brand note. Only a failed negotiation can be retried — anything else is either still running or has an award worth keeping.",
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    202: { content: { "application/json": { schema: negotiationViewSchema } }, description: "Restarted" },
+    404: errorResponses[404],
+    409: errorResponses[409],
+  },
+});
+
+negotiations.openapi(retry, async (c) => {
+  const { id } = c.req.valid("param");
+  const existing = await db.query.negotiations.findFirst({
+    where: eq(schema.negotiations.id, id),
+  });
+
+  if (!existing) return c.json({ error: "negotiation not found" }, 404);
+  if (existing.status !== "failed") {
+    return c.json(
+      { error: `this negotiation is ${existing.status}, and only a failed one can be retried` },
+      409,
+    );
+  }
+
+  await resetForRetry(id);
+  await startNegotiation(id);
+
+  const view = await readNegotiation(id);
+  if (!view) return c.json({ error: "negotiation not found" }, 404);
+  return c.json(view, 202);
 });
 
 const curveball = createRoute({

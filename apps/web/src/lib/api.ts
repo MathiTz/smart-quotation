@@ -169,6 +169,8 @@ export const api = {
 
   negotiation: (id: string) => request<Negotiation>(`/negotiations/${id}`),
 
+  retry: (id: string) => request<Negotiation>(`/negotiations/${id}/retry`, { method: "POST" }),
+
   curveball: (id: string, input: { supplierCode?: string; fulfillmentRatio?: number; skip?: boolean }) =>
     request<Negotiation>(`/negotiations/${id}/curveball`, {
       method: "POST",

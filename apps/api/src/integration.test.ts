@@ -8,7 +8,8 @@ import { db, pool, schema } from "./db/client.js";
 import { env } from "./env.js";
 import { ingestQuotation } from "./quotations/ingest.js";
 import { readTranscript } from "./negotiation/view.js";
-import { rebuildOptions } from "./negotiation/engine.js";
+import { markFailed, rebuildOptions, resetForRetry } from "./negotiation/engine.js";
+import { STALE_AFTER_MS, recoverInterrupted } from "./negotiation/recover.js";
 import { resumeNegotiation, startNegotiation } from "./workflows/runner.js";
 import {
   CommitError,
@@ -408,6 +409,128 @@ suite("a buyer can overrule the recommendation", () => {
       .where(eq(schema.purchaseOrders.negotiationId, negotiation!.id));
     expect(written.length).toBe(0);
   }, 180_000);
+});
+
+suite("a negotiation interrupted by a restart does not spin forever", () => {
+  /**
+   * Simulates the process dying mid-round: the row says `negotiating` and the
+   * in-process handler that would have marked it failed went with the process.
+   * Nothing else in the system is watching it.
+   */
+  async function abandoned(ageMs: number): Promise<string> {
+    const quotation = await ingestQuotation({
+      source: resolve(env.repoRoot, "fixtures/quotation_1.xlsx"),
+      filename: "quotation_1.xlsx",
+      brandNote: "cheapest wins",
+    });
+
+    const [negotiation] = await db
+      .insert(schema.negotiations)
+      .values({
+        quotationId: quotation.id,
+        tierQuantity: quotation.suggestedTier,
+        constraints: quotation.constraints,
+        status: "negotiating",
+        updatedAt: new Date(Date.now() - ageMs),
+      })
+      .returning();
+
+    return negotiation!.id;
+  }
+
+  it("marks a stale in-flight negotiation failed, with a reason a buyer can act on", async () => {
+    const id = await abandoned(STALE_AFTER_MS * 2);
+
+    await recoverInterrupted();
+
+    const row = await db.query.negotiations.findFirst({ where: eq(schema.negotiations.id, id) });
+    expect(row?.status).toBe("failed");
+    expect(row?.error).toMatch(/no longer running/);
+    // The two things that matter to whoever reads it: no money moved, and there
+    // is a way out.
+    expect(row?.error).toMatch(/Nothing was ordered/);
+    expect(row?.error).toMatch(/run it again/i);
+    // It cannot know why, so it must not say. A restart, a crash and a hung
+    // provider are indistinguishable from a row that stopped being written to.
+    expect(row?.error).not.toMatch(/restart|crash|timed out/i);
+  }, 60_000);
+
+  it("leaves a negotiation that is still writing alone, so a second instance cannot kill live work", async () => {
+    const id = await abandoned(0);
+
+    await recoverInterrupted();
+
+    const row = await db.query.negotiations.findFirst({ where: eq(schema.negotiations.id, id) });
+    expect(row?.status).toBe("negotiating");
+  }, 60_000);
+
+  it("never sweeps a suspended negotiation, which is parked on purpose", async () => {
+    const quotation = await ingestQuotation({
+      source: resolve(env.repoRoot, "fixtures/quotation_1.xlsx"),
+      filename: "quotation_1.xlsx",
+      brandNote: "cheapest wins",
+    });
+
+    // Waiting on the curveball is a state it can sit in for as long as the buyer
+    // takes to answer, which is exactly what an age threshold would misread.
+    const [negotiation] = await db
+      .insert(schema.negotiations)
+      .values({
+        quotationId: quotation.id,
+        tierQuantity: quotation.suggestedTier,
+        constraints: quotation.constraints,
+        status: "suspended",
+        updatedAt: new Date(Date.now() - STALE_AFTER_MS * 10),
+      })
+      .returning();
+
+    await recoverInterrupted();
+
+    const row = await db.query.negotiations.findFirst({
+      where: eq(schema.negotiations.id, negotiation!.id),
+    });
+    expect(row?.status).toBe("suspended");
+  }, 60_000);
+
+  it("can be run again, and the retry starts from a clean transcript", async () => {
+    const quotation = await ingestQuotation({
+      source: resolve(env.repoRoot, "fixtures/quotation_1.xlsx"),
+      filename: "quotation_1.xlsx",
+      brandNote: "cheapest wins",
+    });
+
+    const [negotiation] = await db
+      .insert(schema.negotiations)
+      .values({
+        quotationId: quotation.id,
+        tierQuantity: quotation.suggestedTier,
+        constraints: quotation.constraints,
+      })
+      .returning();
+
+    const id = negotiation!.id;
+    await startNegotiation(id);
+    await waitForStatus(id, "suspended");
+
+    const firstRun = await readTranscript(id);
+    expect(firstRun.length).toBeGreaterThan(0);
+
+    await markFailed(id, "pretend the process died");
+    await resetForRetry(id);
+
+    // `negotiation_rounds` is unique on (negotiation_id, sequence), so a retry
+    // that kept the old rows would collide on the first line the rerun writes.
+    expect(await readTranscript(id)).toHaveLength(0);
+
+    const cleared = await db.query.negotiations.findFirst({ where: eq(schema.negotiations.id, id) });
+    expect(cleared?.status).toBe("pending");
+    expect(cleared?.error).toBeNull();
+    expect(cleared?.curveballApplied).toBe(false);
+
+    await startNegotiation(id);
+    await waitForStatus(id, "suspended");
+    expect((await readTranscript(id)).length).toBeGreaterThan(0);
+  }, 240_000);
 });
 
 afterAll(async () => {

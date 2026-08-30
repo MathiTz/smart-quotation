@@ -90,14 +90,15 @@ Audited against the built system, not the plan.
 
 ## Test coverage
 
-119 tests, plus two Playwright journeys.
+124 tests, plus two Playwright journeys.
 
 | Area | File | What it pins down |
 |---|---|---|
-| Parser | `parser/parser.test.ts` (17) | Float cleanup, SKU recognition, header interpretation, metadata extraction, and end-to-end parsing of all four fixtures |
+| Parser | `parser/parser.test.ts` (32) | Float cleanup, thousands separators against European decimals, SKU recognition through mangled typography, header interpretation, metadata extraction, and end-to-end parsing of all ten fixtures |
 | Matcher | `matching/matcher.test.ts` (22) | Every typo class, tier ordering, ambiguity, and refusal to match across SKU prefixes |
-| Negotiation | `negotiation/negotiation.test.ts` (29) | Pricing derivation, payment cash-flow cost, note parsing, coverage, MOQ repair, over-allocation invariants, and scoring behaviour including coverage penalties |
-| Integration | `integration.test.ts` (7) | The workflow suspends after round one; the curveball resumes without replaying; capacity caps the award; commits are idempotent; terms are frozen and self-consistent; effects are delivered exactly once; drafts withhold supplier-facing effects until confirmed |
+| Negotiation | `negotiation/negotiation.test.ts` (41) | Pricing derivation, payment cash-flow cost, note parsing, coverage, MOQ repair, over-allocation invariants, message scrubbing, and scoring behaviour including coverage penalties and non-finite guards |
+| Providers | `agents/providers.test.ts` (13) | Model spec parsing, credential detection, and the report shown when live models are asked for without a key |
+| Integration | `integration.test.ts` (16) | The workflow suspends after round one; the curveball resumes without replaying; capacity caps the award; commits are idempotent; terms are frozen and self-consistent; effects are delivered exactly once; drafts withhold supplier-facing effects until confirmed; a buyer can overrule the recommendation; two tabs committing different plans still buy once; an interrupted negotiation is swept to `failed` and can be re-run |
 | End to end | `e2e/happy-path.spec.ts` (2) | Upload through to a purchase order in a browser, and a readable error for a file that is not a workbook |
 
 ---
@@ -118,3 +119,7 @@ Stated plainly rather than left to be discovered. Expanded in the README.
    retries and dead-lettering are real; the five handlers log because there is nothing to call.
 6. **Supplier quality ratings are static**, as given in the brief. In practice they would come from
    receiving inspection history.
+7. **A negotiation interrupted mid-round is re-run, not resumed.** Suspending at the curveball is
+   durable because Mastra snapshots the run to Postgres; a run halfway through a round has no
+   snapshot and no record of which supplier had answered. Those rows are swept to `failed` after five
+   model timeouts of silence and offer a retry, rather than being left to spin.

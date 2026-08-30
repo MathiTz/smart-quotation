@@ -431,6 +431,43 @@ export async function markFailed(negotiationId: string, error: string): Promise<
   await setStatus(negotiationId, "failed", error);
 }
 
+/**
+ * Clears a failed negotiation back to the state it was in before it ran, so it
+ * can be started again.
+ *
+ * The transcript has to go rather than be appended to. `negotiation_rounds` is
+ * uniquely indexed on `(negotiation_id, sequence)`, so a second run would
+ * collide on the first row it wrote — and even without the index, a transcript
+ * holding half of one conversation followed by all of another is not a record of
+ * anything that happened.
+ *
+ * The quotation, the tier and the brand's note all survive: they are what the
+ * buyer chose, and a retry is a retry of the negotiation, not of the setup.
+ */
+export async function resetForRetry(negotiationId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(schema.negotiationRounds)
+      .where(eq(schema.negotiationRounds.negotiationId, negotiationId));
+
+    await tx
+      .update(schema.negotiations)
+      .set({
+        status: "pending",
+        error: null,
+        award: null,
+        coverage: [],
+        // The curveball is part of the run, not the setup, so a fresh run is
+        // entitled to be asked about it again.
+        capacity: {},
+        curveballApplied: false,
+        workflowRunId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.negotiations.id, negotiationId));
+  });
+}
+
 export async function transcript(negotiationId: string) {
   return db
     .select()

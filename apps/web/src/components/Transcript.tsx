@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { SupplierProfile } from "@sq/shared";
 import type { TranscriptEntry } from "../lib/api.js";
-import { Badge, Hint, cx } from "./ui.js";
+import { Badge, Empty, Hint, cx } from "./ui.js";
 import { dateTime } from "../lib/format.js";
 
 /**
@@ -34,6 +34,15 @@ export function Transcript({
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       }}
     >
+      {/*
+        A negotiation that stops before its first round leaves nothing to render,
+        and an empty card reads as a component that failed rather than as a
+        conversation that never happened. When it is still live the pulse below
+        already says what is going on, so this only speaks once it cannot.
+      */}
+      {entries.length === 0 && !live && (
+        <Empty>Nothing was exchanged. This negotiation stopped before the agents began.</Empty>
+      )}
       {entries.map((entry) => (
         <Entry key={entry.sequence} entry={entry} suppliers={suppliers} />
       ))}

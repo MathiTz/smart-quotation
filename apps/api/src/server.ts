@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./http/app.js";
 import { startOutboxWorker, stopOutboxWorker } from "./purchase-orders/outbox.js";
+import { startRecoveryWorker, stopRecoveryWorker } from "./negotiation/recover.js";
 import { pool } from "./db/client.js";
 import { env } from "./env.js";
 import {
@@ -18,6 +19,7 @@ assertModelsUsable();
 
 const app = createApp();
 startOutboxWorker();
+startRecoveryWorker();
 
 const server = serve({ fetch: app.fetch, port: env.apiPort }, (info) => {
   console.log(`api listening on http://localhost:${info.port}`);
@@ -87,6 +89,7 @@ process.on("uncaughtException", (error) => {
   console.error("uncaught exception — shutting down");
   console.error(error.stack ?? error.message);
   stopOutboxWorker();
+  stopRecoveryWorker();
   process.exit(1);
 });
 
@@ -98,6 +101,7 @@ async function shutdown() {
   closing = true;
 
   stopOutboxWorker();
+  stopRecoveryWorker();
   server.close();
   try {
     await pool.end();

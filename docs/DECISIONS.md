@@ -733,3 +733,49 @@ a negotiation is bought once. Commits on *different* negotiations are unaffected
 different rows. The integration test drives both requests concurrently through `Promise.allSettled`
 and asserts one succeeds and one fails with the right error; removing the lock makes it fail with
 two successes, which is how the bug was confirmed rather than assumed.
+
+---
+
+## "Durable" was doing too much work in that sentence
+
+**Decision:** sweep interrupted negotiations into `failed` on an interval, and give the buyer an
+explicit retry.
+
+**Rejected:** resuming them automatically, or restarting them from scratch on boot.
+
+Mastra's Postgres snapshots make a *suspended* run durable, and that is a real guarantee: resuming
+one is an explicit call that rebuilds it by run id, so a negotiation parked at the curveball survives
+any restart. The mistake was extending that word to cover a run that was mid-round. There is no
+snapshot for one of those — `startNegotiation` hands the run to Mastra and attaches the failure
+handler to an in-process promise, so when the process dies the handler dies with it and the row is
+left saying `negotiating` with nothing left anywhere that will ever touch it again.
+
+It was found the way these things usually are: a `tsx` watch restart during development killed a live
+negotiation, and the UI sat spinning on it for nine minutes. The row said `negotiating`, the
+`mastra_workflow_snapshot` table had no row for its run id at all, and no code path existed that
+would ever look at it again.
+
+Restarting it automatically was tempting and wrong. It spends a fresh set of model calls on a
+decision nobody asked to re-open, and it appends to a transcript that already holds half a
+conversation — `negotiation_rounds` is unique on `(negotiation_id, sequence)`, so the rerun collides
+on its first write anyway. Resuming mid-round is not available: nothing records which supplier had
+answered. So the sweep does the only honest thing, which is to stop claiming the negotiation is still
+running, and leaves the decision to re-spend that money with the person spending it.
+
+The threshold is what makes it safe to run more than one API instance. Eligibility is not "status is
+`negotiating`" but "status is `negotiating` **and** nothing has written to the row in five model
+timeouts", so a negotiation another process is actively working on is never a candidate. `suspended`
+is excluded outright, because waiting for a human to answer the curveball is a state it is entitled
+to sit in indefinitely.
+
+**Ramification:** an interrupted negotiation now costs a retry click instead of a dead row. The sweep
+runs on an interval rather than only at boot, so a run abandoned by a process that stays up is caught
+too.
+
+What it cannot do is say why. A restart, a crash and a provider that hung past every timeout all
+reach it as the same evidence — a row nobody has written to for five model timeouts — so the message
+deliberately names no cause. The first draft said "the server restarted", which was true of the case
+that produced it and would be a guess in the other two. It now states only what holds in every case:
+it is not running, nothing was bought, and it can be started again. A test asserts the message does
+*not* mention a restart, a crash or a timeout, because the tempting fix when someone asks "why did
+this fail" is to put a plausible reason in the sentence rather than in the logs.

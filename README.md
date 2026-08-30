@@ -192,7 +192,7 @@ leaving the right-hand side alone — and change the port in `DATABASE_URL` to m
 | `pnpm dev:api` / `pnpm dev:web` | One side only, when you want a quiet log |
 | `pnpm build` | Production build of every package |
 | `pnpm typecheck` | Every package, plus `scripts/` |
-| `pnpm test` | 119 unit and integration tests |
+| `pnpm test` | 124 unit and integration tests |
 | `pnpm test:watch` | The same, on change |
 | `pnpm test:e2e` | Playwright, end to end |
 | `pnpm db:up` / `pnpm db:down` | Start or stop Postgres |
@@ -215,7 +215,7 @@ pnpm db:up      # required: the integration tests use a real Postgres
 pnpm test
 ```
 
-119 tests across five files. The integration tests deliberately run against real Postgres rather than
+124 tests across five files. The integration tests deliberately run against real Postgres rather than
 a mock, because the things most worth testing here — the transaction around the commit, the gap-free
 PO number allocation, `FOR UPDATE SKIP LOCKED` in the outbox worker — are database behaviour, and a
 mock would assert that the mock works.
@@ -646,4 +646,13 @@ What was deliberately left out, and what it would take.
   a workbook with more than two tiers has not been exercised beyond the fixtures.
 - The SSE stream polls the database every 400ms. Correct and restart-safe, but `LISTEN/NOTIFY` would
   be the right call at scale.
-- A negotiation cannot currently be re-run without re-uploading the quotation.
+- A negotiation killed mid-round cannot be resumed, only re-run. A *suspended* negotiation is durable
+  — it is a snapshot in Postgres, and resuming it is an explicit call — but a run halfway through a
+  round has no snapshot and no record of which supplier had already answered. Those are swept into
+  `failed` once they have been silent for five model timeouts, and "Run it again" restarts them
+  against the same quotation, tier and note. The retry clears the partial transcript rather than
+  appending to it.
+- That sweep cannot tell "the process died" from "the model provider hung past every timeout" — both
+  arrive as a row nobody is writing to. So the message names no cause, only what is true either way:
+  it is not running, nothing was bought, and it can be started again. The cause, where there is one,
+  is in the API logs.
