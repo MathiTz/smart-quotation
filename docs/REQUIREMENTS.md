@@ -90,7 +90,7 @@ Audited against the built system, not the plan.
 
 ## Test coverage
 
-92 tests, plus two Playwright journeys.
+119 tests, plus two Playwright journeys.
 
 | Area | File | What it pins down |
 |---|---|---|

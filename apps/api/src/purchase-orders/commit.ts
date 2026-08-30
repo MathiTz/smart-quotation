@@ -117,6 +117,7 @@ export async function convertNegotiation(options: ConvertOptions): Promise<Purch
     // race: both requests saw `awaiting_conversion`, both passed, both wrote.
     // `FOR UPDATE` serialises them, so the second waits for the first to commit
     // and then sees the status it set.
+    // #region lock
     const [locked] = await tx
       .select()
       .from(schema.negotiations)
@@ -143,6 +144,7 @@ export async function convertNegotiation(options: ConvertOptions): Promise<Purch
         );
       }
     }
+    // #endregion lock
 
     const created: PurchaseOrder[] = [];
 
