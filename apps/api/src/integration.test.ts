@@ -10,7 +10,12 @@ import { ingestQuotation } from "./quotations/ingest.js";
 import { readTranscript } from "./negotiation/view.js";
 import { rebuildOptions } from "./negotiation/engine.js";
 import { resumeNegotiation, startNegotiation } from "./workflows/runner.js";
-import { confirmPurchaseOrder, convertNegotiation, getPurchaseOrder } from "./purchase-orders/commit.js";
+import {
+  CommitError,
+  confirmPurchaseOrder,
+  convertNegotiation,
+  getPurchaseOrder,
+} from "./purchase-orders/commit.js";
 import { drainAll } from "./purchase-orders/outbox.js";
 
 /**
@@ -300,6 +305,69 @@ suite("a buyer can overrule the recommendation", () => {
       expect(po.termsSnapshot.chosenOptionId).toBe(other!.optionId);
       expect(po.termsSnapshot.recommendedOptionId).toBe(award.winningOptionId);
     }
+  }, 180_000);
+
+  it("buys once when two tabs commit different plans at the same moment", async () => {
+    const quotation = await ingestQuotation({
+      source: resolve(env.repoRoot, "fixtures/quotation_1.xlsx"),
+      filename: "quotation_1.xlsx",
+      brandNote: "cheapest wins",
+    });
+
+    const [negotiation] = await db
+      .insert(schema.negotiations)
+      .values({
+        quotationId: quotation.id,
+        tierQuantity: quotation.suggestedTier,
+        constraints: quotation.constraints,
+      })
+      .returning();
+
+    await startNegotiation(negotiation!.id);
+    await waitForStatus(negotiation!.id, "suspended");
+    await resumeNegotiation(negotiation!.id, { skip: true });
+    await waitForStatus(negotiation!.id, "awaiting_conversion");
+
+    const row = await db.query.negotiations.findFirst({
+      where: eq(schema.negotiations.id, negotiation!.id),
+    });
+    const award = row!.award!;
+    const other = award.scores.find((s) => s.optionId !== award.winningOptionId);
+    expect(other, "the fixture should produce more than one plan").toBeDefined();
+
+    // Two different plans produce different allocation keys and different terms
+    // hashes, so the unique index on idempotency_key never fires. Nothing but
+    // the status check stands between these two and buying the basket twice —
+    // and the status check used to run before the transaction opened.
+    const outcomes = await Promise.allSettled([
+      convertNegotiation({
+        negotiationId: negotiation!.id,
+        idempotencyKey: `race-${negotiation!.id}`,
+        saveAsDraft: false,
+      }),
+      convertNegotiation({
+        negotiationId: negotiation!.id,
+        idempotencyKey: `race-${negotiation!.id}`,
+        saveAsDraft: false,
+        optionId: other!.optionId,
+      }),
+    ]);
+
+    const won = outcomes.filter((o) => o.status === "fulfilled");
+    expect(won, "exactly one of the two commits should succeed").toHaveLength(1);
+
+    // And the loser has to fail for the right reason, not on a deadlock or a
+    // constraint violation that happens to look like success from a distance.
+    const lost = outcomes.find((o) => o.status === "rejected");
+    expect((lost as PromiseRejectedResult).reason).toBeInstanceOf(CommitError);
+    expect((lost as PromiseRejectedResult).reason.message).toContain("already been converted");
+
+    // The negotiation was bought once, so exactly one plan's worth of orders exists.
+    const stored = await db.query.purchaseOrders.findMany({
+      where: eq(schema.purchaseOrders.negotiationId, negotiation!.id),
+    });
+    const distinctPlans = new Set(stored.map((po) => po.termsSnapshot.chosenOptionId));
+    expect(distinctPlans.size).toBe(1);
   }, 180_000);
 
   it("refuses a plan that was never on the table", async () => {

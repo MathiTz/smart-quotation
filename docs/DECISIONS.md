@@ -710,3 +710,26 @@ a million, and uploads reject an empty file before the parser reports it as an u
 Not passing a note remains entirely valid and is the common case: the default weighting applies and
 the UI echoes it back, so "no instruction" and "an instruction that was not understood" never look
 the same on screen.
+
+## The idempotency key was never the whole guard
+
+The unique index on `idempotency_key` protects against a repeat of the *same* commit, which is the
+double-clicked button. It does nothing about two tabs committing *different* plans: a different plan
+means a different `allocationKey` and a different terms hash, so the composed key differs, no
+constraint fires, and both writes are perfectly legal as far as the database is concerned.
+
+The only thing standing between that and buying one basket twice was the negotiation's status — and
+that check ran *before* the transaction opened. Both requests read `awaiting_conversion`, both
+passed, both wrote. Two purchase orders on two different plans for one negotiation, both `sent`,
+both suppliers told.
+
+The check now runs inside the transaction against a `SELECT ... FOR UPDATE` on the negotiation row,
+so the second request waits for the first to commit and then reads the status it set. The row lock
+is what serialises them; the unique index never could, because the two keys were genuinely different
+and describing genuinely different purchases.
+
+**Ramification:** commits on the same negotiation are now serialised, which is exactly the intent —
+a negotiation is bought once. Commits on *different* negotiations are unaffected, since they lock
+different rows. The integration test drives both requests concurrently through `Promise.allSettled`
+and asserts one succeeds and one fails with the right error; removing the lock makes it fail with
+two successes, which is how the bug was confirmed rather than assumed.

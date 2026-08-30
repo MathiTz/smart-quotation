@@ -99,27 +99,51 @@ export async function convertNegotiation(options: ConvertOptions): Promise<Purch
     (allocation) => `${options.idempotencyKey}:${allocation.allocationKey}:${termsHash(allocation)}`,
   );
 
-  // A negotiation is bought once. Replaying the *same* commit still returns the
-  // same orders below, which is what makes a retry safe; arriving with a new key
-  // is a second purchase and is refused.
-  //
-  // The per-allocation check inside the transaction cannot do this on its own:
-  // it only recognises a key it has seen, so a fresh key looked like a first
-  // commit and wrote a duplicate PO — with the supplier notified twice.
-  if (negotiation.status === "converted") {
-    const replay = await db.query.purchaseOrders.findMany({
-      where: inArray(schema.purchaseOrders.idempotencyKey, keys),
-    });
-    if (replay.length === 0) {
-      throw new CommitError("this negotiation has already been converted to a purchase order", 409);
-    }
-  }
-
   const offers = await latestOffers(options.negotiationId);
   const agreedAt = new Date().toISOString();
   const status = options.saveAsDraft ? "draft" : "sent";
 
   return db.transaction(async (tx) => {
+    // Re-read the negotiation *inside* the transaction and hold a row lock on it
+    // for the duration.
+    //
+    // The unique index on `idempotency_key` only catches a repeat of the same
+    // commit. Two tabs converting two *different* plans produce different
+    // allocation keys and different terms hashes, so their keys never collide
+    // and the index never fires — which made the status check the only thing
+    // standing between them and two purchase orders for one negotiation.
+    //
+    // Read before the transaction, that check was a time-of-check-to-time-of-use
+    // race: both requests saw `awaiting_conversion`, both passed, both wrote.
+    // `FOR UPDATE` serialises them, so the second waits for the first to commit
+    // and then sees the status it set.
+    const [locked] = await tx
+      .select()
+      .from(schema.negotiations)
+      .where(eq(schema.negotiations.id, options.negotiationId))
+      .for("update");
+
+    if (!locked) throw new CommitError("negotiation not found", 404);
+
+    // A negotiation is bought once. Replaying the *same* commit still returns
+    // the same orders below, which is what makes a retry safe; arriving with a
+    // new key is a second purchase and is refused.
+    //
+    // The per-allocation check below cannot do this on its own: it only
+    // recognises a key it has seen, so a fresh key looked like a first commit
+    // and wrote a duplicate PO — with the supplier notified twice.
+    if (locked.status === "converted") {
+      const replay = await tx.query.purchaseOrders.findMany({
+        where: inArray(schema.purchaseOrders.idempotencyKey, keys),
+      });
+      if (replay.length === 0) {
+        throw new CommitError(
+          "this negotiation has already been converted to a purchase order",
+          409,
+        );
+      }
+    }
+
     const created: PurchaseOrder[] = [];
 
     for (const [index, allocation] of allocations.entries()) {
