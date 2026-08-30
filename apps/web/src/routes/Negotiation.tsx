@@ -157,7 +157,13 @@ export function NegotiationRoute() {
     [award],
   );
 
-  const chosenId = pickedId ?? award?.winningOptionId ?? null;
+  // A ruled-out plan is not a valid pick — ignore a stale selection if the scores
+  // changed under us (for example after a note edit re-ranks the same negotiation).
+  const pickedScore = pickedId ? award?.scores.find((s) => s.optionId === pickedId) : null;
+  const chosenId =
+    pickedScore && !pickedScore.disqualified
+      ? pickedId
+      : (award?.winningOptionId ?? null);
   const chosenScore = award?.scores.find((s) => s.optionId === chosenId) ?? null;
   const overriding = Boolean(award && chosenId !== award.winningOptionId);
 
@@ -424,16 +430,9 @@ export function NegotiationRoute() {
                       Buying <strong>{chosenScore?.label}</strong> instead of the recommended{" "}
                       {award.label}.
                     </p>
-                    {chosenScore?.disqualified ? (
-                      <p className="mt-1 text-bad">
-                        This plan breaks a stated constraint: {chosenScore.disqualifiedReasons.join("; ")}.
-                        The purchase order records that it was chosen over the recommendation.
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-ink-dim">
-                        The purchase order records which plan was recommended and which was bought.
-                      </p>
-                    )}
+                    <p className="mt-1 text-ink-dim">
+                      The purchase order records which plan was recommended and which was bought.
+                    </p>
                     <button
                       type="button"
                       onClick={() => setPickedId(null)}

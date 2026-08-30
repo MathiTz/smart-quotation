@@ -15,12 +15,9 @@ const AMOUNT: Record<CostBasis, (s: ScoreBreakdown) => number> = {
  * rather than hidden: "why didn't it pick the cheap one" is the first question a
  * sourcing manager asks, and the answer needs to be on screen.
  *
- * They are also selectable, including the ruled-out ones. The ranking is computed
- * from the priorities somebody typed into a note, and a buyer who knows something
- * that note does not — a relationship, a quality history, a deadline that turned
- * out to be soft — has to be able to overrule it. Blocking that would not stop
- * the override; it would move it into a spreadsheet where nothing records that
- * the system disagreed.
+ * Ruled-out plans are not selectable. A hard constraint in the brand note is a
+ * hard constraint — the buyer can still pick a different *qualifying* plan over
+ * the recommendation, but not one the note itself ruled out.
  */
 export function Comparison({
   scores,
@@ -37,7 +34,7 @@ export function Comparison({
   onSelect?: (optionId: string) => void;
 }) {
   const ranked = [...scores].sort((a, b) => b.score - a.score);
-  const selectable = Boolean(onSelect);
+  const canChoose = Boolean(onSelect);
 
   // Each bar is read against the same dimension on every other plan, so it needs
   // the whole column, not just its own cell.
@@ -51,20 +48,25 @@ export function Comparison({
   return (
     <div
       className="space-y-3"
-      role={selectable ? "radiogroup" : undefined}
-      aria-label={selectable ? "Which plan to buy" : undefined}
+      role={canChoose ? "radiogroup" : undefined}
+      aria-label={canChoose ? "Which plan to buy" : undefined}
     >
       {ranked.map((score) => {
         const won = score.optionId === winningId;
         const selected = score.optionId === selectedId;
+        const pickable = canChoose && !score.disqualified;
         return (
           <div
             key={score.optionId}
-            role={selectable ? "radio" : undefined}
-            aria-checked={selectable ? selected : undefined}
-            tabIndex={selectable ? 0 : undefined}
-            onClick={() => onSelect?.(score.optionId)}
+            role={pickable ? "radio" : undefined}
+            aria-checked={pickable ? selected : undefined}
+            aria-disabled={canChoose && score.disqualified ? true : undefined}
+            tabIndex={pickable ? 0 : undefined}
+            onClick={() => {
+              if (pickable) onSelect?.(score.optionId);
+            }}
             onKeyDown={(event) => {
+              if (!pickable) return;
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onSelect?.(score.optionId);
@@ -76,15 +78,16 @@ export function Comparison({
                 ? "border-accent/40 bg-accent/6 shadow-[0_1px_2px_rgba(16,18,24,0.05)]"
                 : "border-edge bg-surface",
               score.disqualified && "bg-surface-2/70 opacity-75",
-              selectable && "cursor-pointer hover:border-accent/60",
-              selected && "border-accent ring-2 ring-accent/25",
-              selectable && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+              pickable && "cursor-pointer hover:border-accent/60",
+              canChoose && score.disqualified && "cursor-not-allowed",
+              selected && pickable && "border-accent ring-2 ring-accent/25",
+              pickable && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
             )}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  {selectable && <Radio checked={selected} />}
+                  {pickable && <Radio checked={selected} />}
                   <span className="text-sm font-medium">{score.label}</span>
                   {won && (
                     <Badge tone="accent" className="shrink-0 whitespace-nowrap">

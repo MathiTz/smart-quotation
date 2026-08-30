@@ -90,6 +90,19 @@ export async function convertNegotiation(options: ConvertOptions): Promise<Purch
   if (!award) throw new CommitError("this negotiation has not produced an award yet", 409);
 
   const chosenOptionId = options.optionId ?? award.winningOptionId;
+  const chosenScore = award.scores.find((score) => score.optionId === chosenOptionId);
+  // A ruled-out plan is visible so the buyer can see *why* it lost — not so they
+  // can buy it. The only exception is the recommendation itself, which can be
+  // disqualified when every plan is: blocking that would leave nothing to commit.
+  if (
+    chosenScore?.disqualified &&
+    chosenOptionId !== award.winningOptionId
+  ) {
+    throw new CommitError(
+      `the plan "${chosenScore.label}" was ruled out (${chosenScore.disqualifiedReasons.join("; ")}) and cannot be converted`,
+      400,
+    );
+  }
   const allocations = await resolveAllocations(options.negotiationId, award, chosenOptionId);
   if (allocations.length === 0) {
     throw new CommitError("that plan has no lines to buy", 409);
