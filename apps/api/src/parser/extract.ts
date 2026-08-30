@@ -1,10 +1,9 @@
-import type { ParsedLine } from "@sq/shared";
+import { AS_QUOTED, type ParsedLine } from "@sq/shared";
 import { cellAt, cleanFloat, roundMoney, roundPrice } from "./read-workbook.js";
 import { looksLikeSku, tidySku } from "./heuristics.js";
 import type { SheetAnalysis } from "./detect-layout.js";
 
-/** Sentinel tier meaning "buy each line at the quantity it was quoted at". */
-export const AS_QUOTED = 0;
+export { AS_QUOTED };
 
 export function extractLines(analyses: SheetAnalysis[]): { lines: ParsedLine[]; warnings: string[] } {
   const lines: ParsedLine[] = [];

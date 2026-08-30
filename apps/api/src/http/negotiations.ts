@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createRouter } from "./router.js";
 import { streamSSE } from "hono/streaming";
 import { eq } from "drizzle-orm";
-import { SUPPLIER_2_CURVEBALL_RATIO, convertRequestSchema } from "@sq/shared";
+import { AS_QUOTED, SUPPLIER_2_CURVEBALL_RATIO, convertRequestSchema } from "@sq/shared";
 import { db, schema } from "../db/client.js";
 import { parseBrandNote } from "../negotiation/constraints.js";
 import { listNegotiations, readNegotiation, readTranscript, pollState } from "../negotiation/view.js";
@@ -28,8 +28,15 @@ const start = createRoute({
         "application/json": {
           schema: z.object({
             quotationId: z.string().uuid(),
-            /** Defaults to the tier the parser suggested. */
-            tierQuantity: z.number().int().positive().max(MAX_TIER_QUANTITY).optional(),
+            /**
+             * Defaults to the tier the parser suggested. `AS_QUOTED` (0) is a
+             * legal value, not an empty basket: it buys each line at the
+             * quantity the file quoted, which is the only sensible answer for a
+             * mixed sheet where no single tier covers the SKUs. Rejecting it
+             * here meant the client could not send back the value this same
+             * route falls through to.
+             */
+            tierQuantity: z.number().int().min(AS_QUOTED).max(MAX_TIER_QUANTITY).optional(),
             /** Overrides the note captured at upload, if the user edited it. */
             note: z.string().max(MAX_NOTE_CHARS).optional(),
           }),

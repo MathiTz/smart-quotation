@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { NegotiationStatus, SupplierProfile } from "@sq/shared";
-import { SUPPLIER_2_CURVEBALL_RATIO, formatPaymentTerms } from "@sq/shared";
+import { AS_QUOTED, SUPPLIER_2_CURVEBALL_RATIO, formatPaymentTerms } from "@sq/shared";
 import { api, streamNegotiation, type Negotiation, type TranscriptEntry } from "../lib/api.js";
 import {
   Badge,
@@ -230,8 +230,10 @@ export function NegotiationRoute() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Negotiation</h1>
           <p className="mt-1.5 text-sm text-ink-dim">
-            {qty(negotiation.tierQuantity)} units per line, three suppliers, all bidding on the same
-            basket.
+            {negotiation.tierQuantity === AS_QUOTED
+              ? "Every line at the quantity its own row was quoted for"
+              : `${qty(negotiation.tierQuantity)} units per line`}
+            , three suppliers, all bidding on the same basket.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {negotiation.constraintSummary.map((line) => (

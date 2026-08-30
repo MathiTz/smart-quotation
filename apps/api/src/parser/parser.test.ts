@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
+import { AS_QUOTED } from "@sq/shared";
 import { parseQuotation } from "./index.js";
 import { parseNumeric, cleanFloat } from "./read-workbook.js";
 import { looksLikeSku, tidySku, tierQuantityFromHeader, headerRole } from "./heuristics.js";
@@ -199,7 +200,23 @@ describe("quotation_4: Chinese headers that name the wrong columns", () => {
   it("reports no tier when the file is a mixed basket", async () => {
     const result = await parseQuotation(fixture(4));
     expect(result.tiers).toEqual([]);
-    expect(result.suggestedTier).toBe(0);
+    expect(result.suggestedTier).toBe(AS_QUOTED);
+  });
+
+  // quotation_9 offers tiers *and* suggests none of them, because neither covers
+  // enough of the sheet. That combination is what made the review screen render a
+  // file that parsed perfectly as an empty table: a client treating AS_QUOTED as
+  // an ordinary tier filters every row away.
+  it("can offer tiers while still suggesting none of them", async () => {
+    const result = await parseQuotation(fixture(9));
+    expect(result.tiers).toEqual([1000, 2000]);
+    expect(result.suggestedTier).toBe(AS_QUOTED);
+    expect(result.lines.length).toBeGreaterThan(0);
+
+    // The quantities the file quotes are not confined to the tiers it offers,
+    // which is precisely why no single tier could be suggested.
+    const quantities = new Set(result.lines.map((l) => l.tierQuantity));
+    expect(quantities.has(5000)).toBe(true);
   });
 });
 

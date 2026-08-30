@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AS_QUOTED } from "@sq/shared";
 import { api, type Quotation, type QuotationLine } from "../lib/api.js";
 import {
   Badge,
@@ -54,7 +55,7 @@ export function ReviewRoute() {
         // the table showed another, and Start would send a mismatched basket.
         if (cancelled) return;
         setQuotation(q);
-        setTier(Number.isFinite(q.suggestedTier) ? q.suggestedTier : 0);
+        setTier(Number.isFinite(q.suggestedTier) ? q.suggestedTier : AS_QUOTED);
         setNote(q.brandNote ?? "");
       })
       .catch((e) => {
@@ -67,10 +68,26 @@ export function ReviewRoute() {
     };
   }, [id]);
 
-  const linesAtTier = useMemo(
-    () => (quotation && tier ? quotation.lines.filter((l) => l.tierQuantity === tier) : []),
-    [quotation, tier],
-  );
+  // `AS_QUOTED` is a real choice, not a missing one: it is what the parser
+  // returns for a mixed sheet where no single quantity covers the SKUs. Treated
+  // as an ordinary tier it matches no rows at all, which rendered a file that
+  // parsed perfectly as an empty table, a $0 baseline and "Negotiate 0 units".
+  //
+  // The rows shown here mirror `buildBasket` exactly — one per SKU, at the
+  // largest quantity the file quoted — because that is the basket the server
+  // will actually negotiate.
+  const linesAtTier = useMemo(() => {
+    if (!quotation || tier === null) return [];
+    if (tier !== AS_QUOTED) return quotation.lines.filter((l) => l.tierQuantity === tier);
+
+    const largest = new Map<string, QuotationLine>();
+    for (const line of quotation.lines) {
+      const key = line.matchedSku ?? line.rawSku;
+      const held = largest.get(key);
+      if (!held || line.quantity > held.quantity) largest.set(key, line);
+    }
+    return [...largest.values()];
+  }, [quotation, tier]);
 
   // The basket is one line per distinct SKU in the whole file, not per row at
   // the selected tier: a line the incumbent declined to price at this volume is
@@ -85,10 +102,24 @@ export function ReviewRoute() {
   if (loadError) return <ErrorPage message={loadError} />;
   if (!quotation || tier === null) return <Spinner label="Loading quotation…" />;
 
+  const asQuoted = tier === AS_QUOTED;
   const baseline = linesAtTier.reduce((sum, l) => sum + l.lineTotal, 0);
   const flagged = linesAtTier.filter(needsReview).length;
   const unpricedAtTier = basketSkus - linesAtTier.length;
-  const basketUnits = basketSkus * tier;
+  const basketUnits = asQuoted
+    ? linesAtTier.reduce((sum, l) => sum + l.quantity, 0)
+    : basketSkus * tier;
+  // A file can parse cleanly and still leave nothing to buy — every row filtered
+  // out by the tier, or nothing readable in the sheet at all. Starting a
+  // negotiation on an empty basket wastes a minute to arrive at no plans.
+  const nothingToBuy = basketUnits === 0 || linesAtTier.length === 0;
+  const tierOptions = asQuotedOptions(quotation.suggestedTier, quotation.tiers);
+  // A file where nothing resolved still negotiates — the basket falls back to the
+  // supplier's own codes — but the buyer is then comparing prices against products
+  // we cannot identify, which is worth saying loudly rather than leaving as a
+  // column of red dots.
+  const unmatched = linesAtTier.filter((l) => !l.matchedSku).length;
+  const noneMatched = linesAtTier.length > 0 && unmatched === linesAtTier.length;
 
   async function start() {
     if (!quotation || tier === null) return;
@@ -111,6 +142,13 @@ export function ReviewRoute() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4 animate-in">
         <div>
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="mb-2 -ml-1 flex items-center gap-1 rounded px-1 py-0.5 text-sm text-ink-dim transition-colors hover:text-ink"
+          >
+            <span aria-hidden>←</span> Upload another quotation
+          </button>
           <h1 className="text-2xl font-semibold tracking-tight">{quotation.filename}</h1>
           <p className="mt-1.5 text-sm text-ink-dim">
             {quotation.metadata.supplierName ?? "Supplier not named in the file"}
@@ -128,9 +166,11 @@ export function ReviewRoute() {
           label="Units to buy"
           value={qty(basketUnits)}
           hint={
-            unpricedAtTier > 0
-              ? `${qty(basketSkus)} lines at ${qty(tier)} each. The incumbent priced ${qty(linesAtTier.length)} of them at this tier; the other ${qty(unpricedAtTier)} still go to the rival suppliers.`
-              : `${qty(basketSkus)} lines at ${qty(tier)} each.`
+            asQuoted
+              ? `${qty(basketSkus)} lines, each at the quantity the file quoted for it. This sheet prices its lines at different volumes, so there is no single tier to buy at.`
+              : unpricedAtTier > 0
+                ? `${qty(basketSkus)} lines at ${qty(tier)} each. The incumbent priced ${qty(linesAtTier.length)} of them at this tier; the other ${qty(unpricedAtTier)} still go to the rival suppliers.`
+                : `${qty(basketSkus)} lines at ${qty(tier)} each.`
           }
         />
         <Stat
@@ -140,7 +180,9 @@ export function ReviewRoute() {
           hint={
             unpricedAtTier > 0
               ? `${qty(unpricedAtTier)} of these are not priced at this tier in the file. They stay in the basket, and the shortfall counts against the incumbent when the plans are scored.`
-              : "Every line in the file is priced at this tier."
+              : asQuoted
+                ? "Every line in the file is priced, each at its own quoted quantity."
+                : "Every line in the file is priced at this tier."
           }
         />
         <Stat
@@ -169,14 +211,15 @@ export function ReviewRoute() {
         subtitle="Every row is matched against products.csv. Colour shows how confident that match is."
         action={
           <div className="flex items-center gap-3">
-            {quotation.tiers.length > 1 && (
+            {tierOptions.length > 1 && (
               <Segmented
                 value={tier}
                 onChange={setTier}
-                options={quotation.tiers.map((t) => ({
-                  value: t,
-                  label: <span className="nums">{qty(t)}/unit tier</span>,
-                }))}
+                options={tierOptions.map((t) =>
+                  t === AS_QUOTED
+                    ? { value: t, label: "As quoted" }
+                    : { value: t, label: <span className="nums">{qty(t)}/unit tier</span> },
+                )}
               />
             )}
             <Segmented
@@ -196,11 +239,32 @@ export function ReviewRoute() {
           <Legend tone="bg-bad" label="Weak — please check" />
         </div>
 
+        {noneMatched && (
+          <div className="mb-4 rounded-lg border border-bad/30 bg-bad/5 px-4 py-3 text-sm">
+            <p className="font-medium text-bad">None of these codes are in the product catalogue.</p>
+            <p className="mt-1 text-ink-dim">
+              All {qty(linesAtTier.length)} lines were read from the file, but none resolved to a
+              product — most often because the supplier uses their own SKU scheme. Matching only
+              reads the code, never the description, so a familiar-looking product name will not
+              rescue an unfamiliar code.
+            </p>
+            <p className="mt-1 text-ink-dim">
+              You can still negotiate: the lines stay in the basket under the supplier's own codes.
+              What you lose is the ability to check that rival suppliers are quoting the same
+              product.
+            </p>
+          </div>
+        )}
+
         {visible.length === 0 ? (
           <Empty>
-            {filter === "review"
-              ? "Nothing needs review at this tier — every line matched confidently."
-              : "No lines were quoted at this tier."}
+            <EmptyReason
+              filter={filter}
+              parsedAnyLine={quotation.lines.length > 0}
+              asQuoted={asQuoted}
+              tier={tier}
+              hasOtherTiers={tierOptions.length > 1}
+            />
           </Empty>
         ) : (
           <div className="overflow-x-auto">
@@ -252,14 +316,79 @@ export function ReviewRoute() {
           </div>
         )}
 
-        <div className="mt-5 flex items-center justify-end gap-3">
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
           {starting && <Spinner label="Opening the negotiation…" />}
-          <Button variant="primary" onClick={start} disabled={starting}>
-            Negotiate {qty(basketUnits)} units
+          {nothingToBuy && !starting && (
+            <p className="mr-auto text-xs text-ink-faint">
+              There is nothing to negotiate for until at least one line is priced.
+            </p>
+          )}
+          <Button variant="primary" onClick={start} disabled={starting || nothingToBuy}>
+            {nothingToBuy ? "Nothing to negotiate" : `Negotiate ${qty(basketUnits)} units`}
           </Button>
         </div>
       </Card>
     </div>
+  );
+}
+
+/**
+ * The tiers a user can pick between. `AS_QUOTED` is offered whenever the parser
+ * could not find a quantity covering the sheet, because in that case it is the
+ * only selection that shows every line.
+ */
+function asQuotedOptions(suggestedTier: number, tiers: number[]): number[] {
+  return suggestedTier === AS_QUOTED ? [AS_QUOTED, ...tiers] : tiers;
+}
+
+/**
+ * An empty table has several quite different causes, and "no lines" for all of
+ * them tells the user nothing about whether to retry, switch tier, or give up on
+ * the file.
+ */
+function EmptyReason({
+  filter,
+  parsedAnyLine,
+  asQuoted,
+  tier,
+  hasOtherTiers,
+}: {
+  filter: Filter;
+  parsedAnyLine: boolean;
+  asQuoted: boolean;
+  tier: number;
+  hasOtherTiers: boolean;
+}) {
+  if (filter === "review") {
+    return <>Nothing needs review here — every line matched the catalogue confidently.</>;
+  }
+
+  if (!parsedAnyLine) {
+    return (
+      <>
+        <span className="font-medium text-ink">No line items could be read from this file.</span>
+        <br />
+        The sheet was opened, but no run of rows looked like SKUs with quantities and prices.
+        That usually means the table is laid out sideways, or the price list is on a sheet
+        that also holds something else. Upload a different file, or check the warnings above.
+      </>
+    );
+  }
+
+  if (asQuoted) {
+    // Unreachable in practice — as-quoted keeps one row per SKU, so the table is
+    // only empty when nothing parsed at all. Kept honest rather than confident.
+    return <>No lines to show.</>;
+  }
+
+  return (
+    <>
+      <span className="font-medium text-ink">Nothing was quoted at {qty(tier)} units.</span>
+      <br />
+      {hasOtherTiers
+        ? "The file prices these lines at a different volume. Switch tier above to see them."
+        : "Every row in this file was quoted at a different quantity."}
+    </>
   );
 }
 

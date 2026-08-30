@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type NegotiationSummary } from "../lib/api.js";
 import { Badge, Button, Empty, ErrorPage, Hint, Spinner, cx } from "../components/ui.js";
 import { errorText } from "../lib/errors.js";
-import { dateOnly, money, qty } from "../lib/format.js";
+import { basketTier, dateOnly, money, qty } from "../lib/format.js";
 import { isRunning, statusCopy, statusRank } from "../lib/negotiation-status.js";
 
 type SortKey = "filename" | "status" | "winner" | "total" | "createdAt";
@@ -220,8 +220,9 @@ export function NegotiationsRoute() {
                         <br />
                         <br />
                         <strong>Before that</strong>, there is no cost yet, so this shows the volume
-                        tier the basket is being priced at instead: units per line. Sorting keeps
-                        those rows at the bottom.
+                        tier the basket is being priced at instead: units per line, or “As quoted”
+                        when the file prices its lines at different volumes and each one is bought at
+                        the quantity it was quoted for. Sorting keeps those rows at the bottom.
                       </>
                     }
                   >
@@ -255,7 +256,7 @@ export function NegotiationsRoute() {
                     </td>
                     <td className="nums px-4 py-3 text-right text-ink-dim">
                       {row.total === null ? (
-                        <span className="text-ink-faint">{qty(row.tierQuantity)}/line</span>
+                        <span className="text-ink-faint">{basketTier(row.tierQuantity)}</span>
                       ) : (
                         money(row.total)
                       )}

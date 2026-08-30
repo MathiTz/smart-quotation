@@ -7,6 +7,8 @@
  * `NaN` next to a supplier name looks like a real number the reader cannot
  * interpret. An em dash reads as "not available", which is what it is.
  */
+import { AS_QUOTED } from "@sq/shared";
+
 const NOT_AVAILABLE = "—";
 
 const isNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
@@ -23,6 +25,15 @@ export const unitMoney = (n: number) =>
 export const qty = (n: number) => (isNumber(n) ? n.toLocaleString("en-US") : NOT_AVAILABLE);
 
 export const pct = (n: number) => (isNumber(n) ? `${Math.round(n * 100)}%` : NOT_AVAILABLE);
+
+/**
+ * A negotiation's tier, for anywhere outside the review screen that has the
+ * number but not the tier picker. `AS_QUOTED` is a sentinel rather than a
+ * quantity, so formatting it as one reads "0/line" on a basket that is really
+ * every line at the volume its own row was quoted for.
+ */
+export const basketTier = (tierQuantity: number) =>
+  tierQuantity === AS_QUOTED ? "As quoted" : `${qty(tierQuantity)}/line`;
 
 export const days = (n: number) => (isNumber(n) ? `${n} day${n === 1 ? "" : "s"}` : NOT_AVAILABLE);
 

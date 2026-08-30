@@ -68,6 +68,15 @@ export const quotationMetadataSchema = z.object({
 });
 export type QuotationMetadata = z.infer<typeof quotationMetadataSchema>;
 
+/**
+ * Sentinel tier meaning "buy each line at the quantity it was quoted at".
+ *
+ * Lives here rather than in the parser because both sides have to agree on it:
+ * the API builds a basket from it, and the client has to render it as a real
+ * choice instead of a tier that matches no rows.
+ */
+export const AS_QUOTED = 0;
+
 /** One priced row, exactly as the sheet had it, before any catalog matching. */
 export const parsedLineSchema = z.object({
   rawSku: z.string(),
