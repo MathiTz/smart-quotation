@@ -25,7 +25,8 @@
     "deck:install": "pnpm --dir deck install --ignore-workspace",
     "deck": "pnpm --dir deck dev",
     "deck:export": "pnpm --dir deck export",
-    "shots": "tsx scripts/capture-deck-shots.ts"
+    "shots": "tsx scripts/capture-deck-shots.ts",
+    "refs": "tsx scripts/sync-refs.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

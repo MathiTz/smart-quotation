@@ -52,6 +52,7 @@ export function roundPrice(n: number): number {
  * than guessing when the text is not really a number, because a column of nulls
  * is what tells the heuristics this is not a price column.
  */
+// #region numeric
 export function parseNumeric(text: string): number | null {
   if (!text) return null;
   let s = text.trim();
@@ -90,6 +91,7 @@ export function parseNumeric(text: string): number | null {
   if (!Number.isFinite(n)) return null;
   return cleanFloat(negative ? -n : n);
 }
+// #endregion numeric
 
 function toCell(raw: ExcelJS.CellValue): Cell {
   if (raw === null || raw === undefined) return EMPTY;

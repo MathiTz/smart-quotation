@@ -41,6 +41,7 @@ function normalise(weights: ScoringWeights): ScoringWeights {
  * to be able to see what was understood — which is why the result is echoed back
  * in the UI rather than kept in a prompt.
  */
+// #region note-parse
 export function parseBrandNote(note: string): NegotiationConstraints {
   const weights: ScoringWeights = { ...DEFAULT_WEIGHTS };
   let maxLeadTimeDays: number | null = null;
@@ -101,6 +102,7 @@ export function parseBrandNote(note: string): NegotiationConstraints {
     notes: text,
   };
 }
+// #endregion note-parse
 
 /** What the UI echoes back so the user can see how their sentence was read. */
 export function describeConstraints(constraints: NegotiationConstraints): string[] {

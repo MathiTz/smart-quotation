@@ -40,6 +40,7 @@ export function extractLines(analyses: SheetAnalysis[]): { lines: ParsedLine[]; 
     // Dropping rows is sometimes right — a totals block is not an order — but
     // dropping them in silence is not, because the missing lines look exactly
     // like lines the supplier never quoted.
+    // #region orphan-warning
     const orphaned: number[] = [];
     for (let r = 0; r < grid.rowCount; r++) {
       if (r >= region.firstDataRow && r <= region.lastDataRow) continue;
@@ -51,6 +52,7 @@ export function extractLines(analyses: SheetAnalysis[]): { lines: ParsedLine[]; 
           `items and were not read (row ${orphaned.slice(0, 6).join(", ")}${orphaned.length > 6 ? ", …" : ""})`,
       );
     }
+    // #endregion orphan-warning
 
     for (let r = region.firstDataRow; r <= region.lastDataRow; r++) {
       // Repaired before the test, so an autocorrected dash does not delete a row.

@@ -74,6 +74,7 @@ function assertModelsUsable(): void {
  * stays where it happened. This is a net, not a hiding place: anything caught
  * here is a bug worth fixing, which is why it prints the whole reason.
  */
+// #region process-errors
 process.on("unhandledRejection", (reason) => {
   console.error("unhandled rejection in background work — the API is still serving");
   console.error(reason instanceof Error ? (reason.stack ?? reason.message) : reason);
@@ -92,6 +93,7 @@ process.on("uncaughtException", (error) => {
   stopRecoveryWorker();
   process.exit(1);
 });
+// #endregion process-errors
 
 let closing = false;
 

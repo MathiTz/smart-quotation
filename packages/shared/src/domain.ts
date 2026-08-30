@@ -103,6 +103,7 @@ export const ANNUAL_DISCOUNT_RATE = 0.12;
  * expensive, Supplier 3 in between) and the floors are how far each will
  * actually go, which is the number the agent is never told.
  */
+// #region profiles
 export const SUPPLIER_PROFILES: readonly SupplierProfile[] = [
   {
     code: "supplier_1",
@@ -120,6 +121,7 @@ export const SUPPLIER_PROFILES: readonly SupplierProfile[] = [
     maxFreightAllowancePerUnit: 0.05,
     moqPerLine: 500,
   },
+  // #endregion profiles
   {
     code: "supplier_2",
     name: "Meridian Apparel Group",

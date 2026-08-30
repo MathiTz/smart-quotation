@@ -107,6 +107,7 @@ export type DataRegion = { headerRow: number; firstDataRow: number; lastDataRow:
  * find a header, assume the table follows — breaks on `quotation_1.xlsx`, whose
  * 15 preamble rows contain better header candidates than the real header does.
  */
+// #region data-region
 export function findDataRegion(grid: SheetGrid): DataRegion | null {
   const isItemRow = grid.rows.map(
     (cells) => cells.some((c) => !c.empty && looksLikeSku(c.text)) && cells.some((c) => c.number !== null),
@@ -153,6 +154,7 @@ export function findDataRegion(grid: SheetGrid): DataRegion | null {
     lastDataRow: bestEnd,
   };
 }
+// #endregion data-region
 
 export type ColumnStats = {
   index: number;

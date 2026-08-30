@@ -43,6 +43,7 @@ export function NegotiationRoute() {
   const [status, setStatus] = useState<NegotiationStatus>("pending");
   const [suppliers, setSuppliers] = useState<SupplierProfile[]>([]);
   const [basis, setBasis] = useState<CostBasis>("effective");
+  // #region error-states
   // Split for the same reason as the review screen: a failed convert must not
   // take the transcript and the comparison down with it.
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function NegotiationRoute() {
   // The stream dying is not an error the user caused, so it reads as a warning
   // and sits above the transcript rather than beside a button.
   const [streamLost, setStreamLost] = useState(false);
+  // #endregion error-states
   const [busy, setBusy] = useState(false);
   // Null means "whatever is recommended", so the default survives the award
   // arriving over SSE after the page has already rendered.
@@ -415,6 +417,7 @@ export function NegotiationRoute() {
                   bookmark.
                 </p>
 
+                {/* #region override */}
                 {overriding && (
                   <div className="mt-3 rounded-lg border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-sm">
                     <p className="text-ink">
@@ -440,6 +443,7 @@ export function NegotiationRoute() {
                     </button>
                   </div>
                 )}
+                {/* #endregion override */}
 
                 {chosenAllocations.length === 0 ? (
                   <p className="mt-3 text-sm text-bad">

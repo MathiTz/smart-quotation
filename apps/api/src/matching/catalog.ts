@@ -81,6 +81,7 @@ export class CatalogIndex {
    * `ambiguous` with the alternatives instead of picking: buying the wrong
    * variant is a worse outcome than asking a human which one they meant.
    */
+  // #region tiers
   match(rawSku: string): MatchOutcome {
     const raw = rawSku.trim();
     if (!raw) return UNMATCHED;
@@ -109,6 +110,7 @@ export class CatalogIndex {
 
     return this.fuzzy(raw, normalized);
   }
+  // #endregion tiers
 
   private fuzzy(raw: string, normalized: string): MatchOutcome {
     const bucket = this.byPrefix.get(skuPrefix(raw)) ?? [];

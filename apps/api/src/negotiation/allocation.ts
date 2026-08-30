@@ -115,6 +115,7 @@ export function allocateSplit(basket: Basket, candidates: AllocationCandidate[])
  * supplier's minimum. Quantity is only ever transferred, never created, so the
  * brand cannot end up buying more than it asked for to satisfy a factory rule.
  */
+// #region moq-repair
 function repairMinimums(
   basket: Basket,
   candidates: AllocationCandidate[],
@@ -223,6 +224,7 @@ function repairMinimums(
     if (!changed) break;
   }
 }
+// #endregion moq-repair
 
 function buildPlan(
   basket: Basket,
@@ -282,6 +284,7 @@ function buildPlan(
  * bought in greater quantity than it was requested in. A bug here is a bug that
  * spends the brand's money, so it throws rather than warns.
  */
+// #region no-over
 export function assertNoOverAllocation(basket: Basket, allocations: Allocation[]): void {
   const requested = new Map(basket.lines.map((l) => [l.sku, l.quantity]));
   const awarded = new Map<string, number>();
@@ -300,6 +303,7 @@ export function assertNoOverAllocation(basket: Basket, allocations: Allocation[]
     }
   }
 }
+// #endregion no-over
 
 function dedupeUncovered(lines: LineCoverage[]): LineCoverage[] {
   const bySku = new Map<string, LineCoverage>();

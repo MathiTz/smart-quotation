@@ -235,6 +235,7 @@ leaving the right-hand side alone — and change the port in `DATABASE_URL` to m
 | `pnpm fixtures` | Regenerate `quotation_5`–`quotation_10` in `fixtures/` |
 | `pnpm deck` | The presentation deck — see [Presenting](#presenting) |
 | `pnpm shots` | Recapture the UI screenshots the deck uses (needs `pnpm dev` running) |
+| `pnpm refs` | Refresh the file-and-line pointers in [`docs/PRESENTATION.md`](docs/PRESENTATION.md) from the `#region` markers in the source |
 
 The API documents itself at http://localhost:8787/docs, which is also reachable at
 http://localhost:5173/docs while the UI dev server is running.

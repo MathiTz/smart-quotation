@@ -198,6 +198,7 @@ export function summariseOption(
  * from the range, and a value that is itself non-finite scores neutral rather
  * than poisoning the comparison.
  */
+// #region normalise
 function normalise(values: number[], value: number, lowerIsBetter: boolean): number {
   const finite = values.filter((v) => Number.isFinite(v));
   if (finite.length === 0 || !Number.isFinite(value)) return 0.5;
@@ -211,12 +212,14 @@ function normalise(values: number[], value: number, lowerIsBetter: boolean): num
   const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
   return lowerIsBetter ? 1 - t : t;
 }
+// #endregion normalise
 
 /**
  * Ranks complete award options. Deliberately a pure function: the agent explains
  * the ranking, it never computes it, which is what makes the reasoning testable
  * and the purchasing decision defensible.
  */
+// #region score
 export function scoreOptions(
   options: AwardOption[],
   suppliers: Record<string, SupplierMeta>,
@@ -285,6 +288,7 @@ export function scoreOptions(
       return b.score - a.score;
     });
 }
+// #endregion score
 
 function hasSpread(values: number[]): boolean {
   const finite = values.filter((v) => Number.isFinite(v));

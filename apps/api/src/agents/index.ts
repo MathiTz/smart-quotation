@@ -47,6 +47,7 @@ const proposalSchema = z.object({
 export const MODEL_TIMEOUT_MS = Number(process.env.MODEL_TIMEOUT_MS ?? 60_000);
 
 /** Every model call is wrapped: a negotiation must not fail, or hang, because an API did. */
+// #region fallback
 async function withFallback<T>(attempt: () => Promise<T>, fallback: () => T, label: string): Promise<T> {
   if (isOffline()) return fallback();
 
@@ -65,6 +66,7 @@ async function withFallback<T>(attempt: () => Promise<T>, fallback: () => T, lab
     clearTimeout(timer);
   }
 }
+// #endregion fallback
 
 export async function proposeOffer(
   supplier: SupplierProfile,
