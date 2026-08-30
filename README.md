@@ -192,7 +192,7 @@ leaving the right-hand side alone — and change the port in `DATABASE_URL` to m
 | `pnpm dev:api` / `pnpm dev:web` | One side only, when you want a quiet log |
 | `pnpm build` | Production build of every package |
 | `pnpm typecheck` | Every package, plus `scripts/` |
-| `pnpm test` | 112 unit and integration tests |
+| `pnpm test` | 119 unit and integration tests |
 | `pnpm test:watch` | The same, on change |
 | `pnpm test:e2e` | Playwright, end to end |
 | `pnpm db:up` / `pnpm db:down` | Start or stop Postgres |
@@ -215,7 +215,7 @@ pnpm db:up      # required: the integration tests use a real Postgres
 pnpm test
 ```
 
-112 tests across five files. The integration tests deliberately run against real Postgres rather than
+119 tests across five files. The integration tests deliberately run against real Postgres rather than
 a mock, because the things most worth testing here — the transaction around the commit, the gap-free
 PO number allocation, `FOR UPDATE SKIP LOCKED` in the outbox worker — are database behaviour, and a
 mock would assert that the mock works.
