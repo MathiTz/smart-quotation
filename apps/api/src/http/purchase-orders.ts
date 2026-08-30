@@ -1,11 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createRouter } from "./router.js";
-import { purchaseOrderSchema } from "@sq/shared";
 import { confirmPurchaseOrder, getPurchaseOrder, listPurchaseOrders } from "../purchase-orders/commit.js";
 import { drainAll } from "../purchase-orders/outbox.js";
 import { errorResponses } from "./errors.js";
-
-const poJson = z.any();
+import { purchaseOrderResponseSchema } from "./schemas.js";
 
 export const purchaseOrders = createRouter();
 
@@ -15,7 +13,7 @@ const list = createRoute({
   summary: "Every PO the brand has issued",
   responses: {
     200: {
-      content: { "application/json": { schema: z.array(purchaseOrderSchema) } },
+      content: { "application/json": { schema: z.array(purchaseOrderResponseSchema) } },
       description: "Purchase orders, newest first",
     },
   },
@@ -29,7 +27,7 @@ const read = createRoute({
   summary: "Read one PO with its frozen terms and delivery status",
   request: { params: z.object({ id: z.string().uuid() }) },
   responses: {
-    200: { content: { "application/json": { schema: poJson } }, description: "PO" },
+    200: { content: { "application/json": { schema: purchaseOrderResponseSchema } }, description: "PO" },
     404: errorResponses[404],
   },
 });
@@ -46,7 +44,7 @@ const confirm = createRoute({
   description: "Releases the supplier-facing effects that a draft withheld. Terms are not recomputed.",
   request: { params: z.object({ id: z.string().uuid() }) },
   responses: {
-    200: { content: { "application/json": { schema: poJson } }, description: "Issued PO" },
+    200: { content: { "application/json": { schema: purchaseOrderResponseSchema } }, description: "Issued PO" },
     404: errorResponses[404],
   },
 });

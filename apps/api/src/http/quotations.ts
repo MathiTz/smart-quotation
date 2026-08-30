@@ -3,14 +3,7 @@ import { createRouter } from "./router.js";
 import { ingestQuotation, getQuotation } from "../quotations/ingest.js";
 import { errorResponses } from "./errors.js";
 import { MAX_NOTE_CHARS, MAX_UPLOAD_BYTES } from "./limits.js";
-
-/**
- * Responses are typed loosely on purpose: the parse result is a deep, evolving
- * shape, and mirroring it in a second Zod schema here would buy documentation at
- * the cost of two definitions to keep in step. The request side, where untrusted
- * input arrives, is validated strictly.
- */
-const anyJson = z.any().openapi("Quotation");
+import { quotationViewSchema } from "./schemas.js";
 
 export const quotations = createRouter();
 
@@ -33,7 +26,7 @@ const upload = createRoute({
     },
   },
   responses: {
-    201: { content: { "application/json": { schema: anyJson } }, description: "Parsed quotation" },
+    201: { content: { "application/json": { schema: quotationViewSchema } }, description: "Parsed quotation" },
     400: errorResponses[400],
     422: errorResponses[422],
   },
@@ -86,7 +79,7 @@ const read = createRoute({
   summary: "Read a parsed quotation",
   request: { params: z.object({ id: z.string().uuid() }) },
   responses: {
-    200: { content: { "application/json": { schema: anyJson } }, description: "Parsed quotation" },
+    200: { content: { "application/json": { schema: quotationViewSchema } }, description: "Parsed quotation" },
     404: errorResponses[404],
   },
 });

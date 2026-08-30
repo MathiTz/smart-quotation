@@ -539,6 +539,13 @@ The API describes itself. With the server running:
 The spec is generated from the same Zod schemas the routes validate with, so it cannot describe a
 request shape the API would reject.
 
+Responses are described rather than validated — re-parsing a typed view model on the way out would
+cost work and catch nothing. What keeps those descriptions honest is the compiler: each response
+schema in `apps/api/src/http/schemas.ts` is `satisfies Describes<T>` against the type the handler
+actually returns, so a view model that gains a field fails the build until the schema gains it too.
+Wiring that up immediately caught three handlers that could answer `null` where the route promised
+an object.
+
 ---
 
 ## Presenting

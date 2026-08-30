@@ -11,8 +11,11 @@ import { convertNegotiation, getPurchaseOrder } from "../purchase-orders/commit.
 import { drainAll } from "../purchase-orders/outbox.js";
 import { errorResponses } from "./errors.js";
 import { MAX_NOTE_CHARS, MAX_TIER_QUANTITY } from "./limits.js";
-
-const anyJson = z.any();
+import {
+  negotiationSummarySchema,
+  negotiationViewSchema,
+  purchaseOrdersSchema,
+} from "./schemas.js";
 
 export const negotiations = createRouter();
 
@@ -45,7 +48,7 @@ const start = createRoute({
     },
   },
   responses: {
-    201: { content: { "application/json": { schema: anyJson } }, description: "Negotiation started" },
+    201: { content: { "application/json": { schema: negotiationViewSchema } }, description: "Negotiation started" },
     404: errorResponses[404],
   },
 });
@@ -77,7 +80,12 @@ negotiations.openapi(start, async (c) => {
   }
 
   await startNegotiation(negotiation!.id);
-  return c.json(await readNegotiation(negotiation!.id), 201);
+  const view = await readNegotiation(negotiation!.id);
+  // Only reachable if the row disappeared between insert and read. Typing the
+  // response properly is what surfaced it: `z.any()` let a null through as a
+  // documented negotiation.
+  if (!view) return c.json({ error: "negotiation not found" }, 404);
+  return c.json(view, 201);
 });
 
 const list = createRoute({
@@ -87,7 +95,7 @@ const list = createRoute({
   description:
     "Negotiations run in the background, so this is how you find one again after navigating away.",
   responses: {
-    200: { content: { "application/json": { schema: anyJson } }, description: "Negotiations" },
+    200: { content: { "application/json": { schema: z.array(negotiationSummarySchema) } }, description: "Negotiations" },
   },
 });
 
@@ -99,7 +107,7 @@ const read = createRoute({
   summary: "Read a negotiation with its full transcript",
   request: { params: z.object({ id: z.string().uuid() }) },
   responses: {
-    200: { content: { "application/json": { schema: anyJson } }, description: "Negotiation" },
+    200: { content: { "application/json": { schema: negotiationViewSchema } }, description: "Negotiation" },
     404: errorResponses[404],
   },
 });
@@ -131,7 +139,7 @@ const curveball = createRoute({
     },
   },
   responses: {
-    202: { content: { "application/json": { schema: anyJson } }, description: "Resumed" },
+    202: { content: { "application/json": { schema: negotiationViewSchema } }, description: "Resumed" },
     404: errorResponses[404],
     409: errorResponses[409],
   },
@@ -145,7 +153,9 @@ negotiations.openapi(curveball, async (c) => {
     return c.json({ error: `this negotiation is ${state.status}, not waiting for input` }, 409);
   }
   await resumeNegotiation(id, c.req.valid("json"));
-  return c.json(await readNegotiation(id), 202);
+  const view = await readNegotiation(id);
+  if (!view) return c.json({ error: "negotiation not found" }, 404);
+  return c.json(view, 202);
 });
 
 const stream = createRoute({
@@ -207,7 +217,7 @@ const convert = createRoute({
     body: { content: { "application/json": { schema: convertRequestSchema } } },
   },
   responses: {
-    201: { content: { "application/json": { schema: anyJson } }, description: "Purchase orders" },
+    201: { content: { "application/json": { schema: purchaseOrdersSchema } }, description: "Purchase orders" },
     400: errorResponses[400],
     404: errorResponses[404],
     409: errorResponses[409],
@@ -226,5 +236,11 @@ negotiations.openapi(convert, async (c) => {
   // Deliver what we can before answering so the UI can show the effects as sent
   // rather than as pending. The background worker is what guarantees the rest.
   await drainAll(created.length * 5);
-  return c.json(await Promise.all(created.map((po) => getPurchaseOrder(po.id))), 201);
+  // Re-read so the effects show as sent rather than pending, but fall back to the
+  // order as written: a failed re-read is not a reason to answer a successful
+  // purchase with a null.
+  const issued = await Promise.all(
+    created.map(async (po) => (await getPurchaseOrder(po.id)) ?? po),
+  );
+  return c.json(issued, 201);
 });
