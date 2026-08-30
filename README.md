@@ -8,6 +8,41 @@ The whole thing runs offline with no API key. See [Running without a model](#run
 
 ---
 
+## The stack
+
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![Node](https://img.shields.io/badge/Node-22.13+-5FA04E?logo=nodedotjs&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-10.9-F69220?logo=pnpm&logoColor=white)
+![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-7.1-646CFF?logo=vite&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-4.1-06B6D4?logo=tailwindcss&logoColor=white)
+![Hono](https://img.shields.io/badge/Hono-4.9-E36002?logo=hono&logoColor=white)
+![Mastra](https://img.shields.io/badge/Mastra-1.63-000000)
+![Drizzle](https://img.shields.io/badge/Drizzle-0.44-C5F74F?logo=drizzle&logoColor=white)
+![Postgres](https://img.shields.io/badge/Postgres-16-4169E1?logo=postgresql&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3.25-3E67B1?logo=zod&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-3.2-6E9F18?logo=vitest&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-1.56-2EAD33)
+
+React and Hono were specified in the brief, so they are not decisions to defend. The rest are, and
+each one is doing a job the alternative could not:
+
+| | Version | The job it is doing |
+| --- | --- | --- |
+| **React + Vite** | 19.2 / 7.1 | The client renders decisions and recomputes none of them. Every number on screen was computed by the server |
+| **Tailwind + Radix** | 4.1 / per-primitive | Styling without a component library to fight, with accessible tooltip and dialog primitives |
+| **Hono** + `zod-openapi` | 4.9 / 0.19 | The request validator and the API documentation are the same object, so the spec cannot describe a request the API would reject |
+| **Mastra** | 1.63 | The negotiation needs a step that can suspend mid-run and resume with a new fact — which is the curveball requirement exactly. Its snapshots live in Postgres, so a suspended run is a row |
+| **Drizzle + Postgres** | 0.44 / 16 | One database, two schemas. Suspend-and-resume is only durable if the run survives the process, and `FOR UPDATE SKIP LOCKED` is what makes the outbox and the commit safe under concurrency |
+| **Zod** | 3.25 | One schema is the TypeScript type, the runtime validator and the OpenAPI entry. Shared by the API and the client, so both agree by construction |
+| **Vitest + Playwright** | 3.2 / 1.56 | 124 unit and integration tests against real Postgres, plus two browser journeys |
+
+The pieces that decide how money is spent — parsing, scoring, allocation, the commit — are ordinary
+typed functions in `packages/shared`, not agents. The model negotiates and explains; it never
+computes a number that ends up on a purchase order.
+
+---
+
 ## What you need
 
 | | Version | Why that one | Check |
