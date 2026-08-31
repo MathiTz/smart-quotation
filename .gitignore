@@ -9,9 +9,3 @@ playwright-report/
 test-results/
 .mastra/
 uploads/
-
-# Deck build artefacts (the deck is its own package, installed on demand)
-deck/node_modules
-deck/dist
-deck/.slidev
-deck/*.pdf

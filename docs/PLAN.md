@@ -593,8 +593,7 @@ Lives in `docs/` in the repo and is revisited as we build, rather than written o
 - `**docs/ARCHITECTURE.md**` — the full system walkthrough: every component, the complete data flow from upload to committed PO, the sequence of every stage, and the state machines. This is the document to open during the interview when asked how something works.
 - `**docs/DECISIONS.md**` — every meaningful decision, what was chosen, what was rejected, and why. Written at design level now and annotated with file and function references as the code lands. This is what backs up "you are expected to understand and explain every aspect of the code": the answer to any "why is it like this" question should already be written down.
 - `**docs/OPEN-QUESTIONS.md**` — questions to put to Amber, plus the ramifications register: everything identified that could break the flow, its blast radius, and its mitigation.
-- `**docs/PRESENTATION.md**` — the deck outline and the timed video script.
-- `**README.md**` — how to run it, environment variables, how to run without an API key, and stated scope limits.
+- `**README.md**` — how to run it, environment variables, how to run without an API key, and stated scope limits. The walkthrough video is linked from there.
 
 ---
 

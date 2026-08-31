@@ -6,6 +6,8 @@ brand converts that into a purchase order.
 
 The whole thing runs offline with no API key. See [Running without a model](#running-without-a-model).
 
+**Walkthrough:** [Part 1](https://cap.so/s/7887wzaz46p7zrp) · [Part 2](https://cap.so/s/f347y97d7e1waqe) · [Part 3](https://cap.so/s/gmpwrk5tcn8abmk)
+
 ---
 
 ## The stack
@@ -233,9 +235,6 @@ leaving the right-hand side alone — and change the port in `DATABASE_URL` to m
 | `pnpm db:up` / `pnpm db:down` | Start or stop Postgres |
 | `pnpm db:reset` | Drop the volume and rebuild schema and seed |
 | `pnpm fixtures` | Regenerate `quotation_5`–`quotation_10` in `fixtures/` |
-| `pnpm deck` | The presentation deck — see [Presenting](#presenting) |
-| `pnpm shots` | Recapture the UI screenshots the deck uses (needs `pnpm dev` running) |
-| `pnpm refs` | Refresh the file-and-line pointers in [`docs/PRESENTATION.md`](docs/PRESENTATION.md) from the `#region` markers in the source |
 
 The API documents itself at http://localhost:8787/docs, which is also reachable at
 http://localhost:5173/docs while the UI dev server is running.
@@ -562,7 +561,6 @@ job rather than being a pile of notes.
 | [`REQUIREMENTS.md`](docs/REQUIREMENTS.md) | Every requirement traced to the file and test that satisfies it, plus the deliberate omissions | You are checking coverage against the brief |
 | [`GLOSSARY.md`](docs/GLOSSARY.md) | Sourcing vocabulary — MOQ, landed cost, incoterms, tier pricing — with terms invented for this project marked as such | A term in the code or the UI is unfamiliar |
 | [`PLAN.md`](docs/PLAN.md) | The implementation plan as it stood while building: data findings, schema, risks, task list | You want the archaeology of how this was sequenced |
-| [`PRESENTATION.md`](docs/PRESENTATION.md) | The timed video script, with what to show and say at each minute, and the questions to expect | You are recording the walkthrough |
 
 ### The API reference
 
@@ -584,34 +582,13 @@ an object.
 
 ---
 
-## Presenting
+## Walkthrough
 
-A [Slidev](https://sli.dev) deck lives in [`deck/`](deck/), kept out of the pnpm workspace so it does
-not land in a reviewer's install.
+A recorded explanation of how the system works, in three parts:
 
-```bash
-pnpm deck:install   # once
-pnpm deck           # http://localhost:3030
-```
-
-The point of it: **the code on the slides is imported from the repository rather than pasted into
-it.** A slide says
-
-```md
-<<< ../apps/api/src/agents/bounds.ts#price-floor ts {1-6|7-10|*}{lines:true}
-```
-
-which reads the real file at build time, shows the span between its `#region` markers, and steps the
-highlight through it as you click. Slides cannot drift from the code they claim to show, and there
-is no switching to the IDE and scrolling mid-sentence.
-
-The screens beside the code are **real screenshots of the running app**, committed under
-`deck/public/ui/` and regenerated with `pnpm shots` — a Playwright script that finds a converted and
-an unconverted negotiation through the API and photographs individual cards, so a slide gets the
-panel rather than a picture of a browser window.
-
-This replaced five screen recordings that the deck referenced and nobody had recorded, so every
-video slide rendered an empty player. [`deck/README.md`](deck/README.md) has the detail.
+1. [Part 1](https://cap.so/s/7887wzaz46p7zrp)
+2. [Part 2](https://cap.so/s/f347y97d7e1waqe)
+3. [Part 3](https://cap.so/s/gmpwrk5tcn8abmk)
 
 ---
 

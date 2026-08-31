@@ -10,9 +10,9 @@ Start here.
 | [DECISIONS.md](DECISIONS.md) | Every choice, what was rejected, and why. Includes alignment with the target role | When asked why something is the way it is. This is the answer key for the interview |
 | [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) | Ambiguities we closed by assumption, plus the ramifications register with blast radius and mitigation | Before the interview. Be ready to say what we assumed and how we would flip it |
 | [GLOSSARY.md](GLOSSARY.md) | Sourcing vocabulary, with terms invented for this project marked | Any time a term is unfamiliar |
-| [PRESENTATION.md](PRESENTATION.md) | Timed video script and the interview deck outline | Before recording, and before the interview |
 
-Run instructions live in the root [`README.md`](../README.md), not here.
+Run instructions live in the root [`README.md`](../README.md), not here. The walkthrough
+video is linked from that README.
 
 ## Working agreement
 

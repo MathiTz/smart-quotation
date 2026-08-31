@@ -83,7 +83,7 @@ Audited against the built system, not the plan.
 | Open text note guiding the negotiating agent | covered | Captured at upload, editable on the review screen, parsed into weights and hard constraints by `negotiation/constraints.ts`, and shown as badges so the effect is visible |
 | UI showing the process, outcome and reasoning | covered | Live SSE transcript, explainability tree, per-dimension score bars, cost-basis toggle, and every rejected plan with its reason |
 | UI to convert the winner and list all POs | covered | |
-| ~10 minute video | open | Script in `PRESENTATION.md`; recording pending |
+| ~10 minute video | covered | Three-part Cap recording linked from the root `README.md` |
 | 1 hour interview | n/a | `DECISIONS.md` and `ARCHITECTURE.md` are the prep |
 
 ---

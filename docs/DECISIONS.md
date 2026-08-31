@@ -351,39 +351,6 @@ offline stubs remain the answer of last resort.
 
 ---
 
-## The presentation deck imports code instead of quoting it
-
-`deck/slides.md`, `deck/README.md`
-
-**Chosen:** a Slidev deck whose code slides read the real source files at build time, via
-`<<< ../apps/api/src/agents/bounds.ts#price-floor`, delimited by `#region` markers in the source.
-
-**Rejected:** pasting snippets into the slides, and screenshotting the editor.
-
-Both rejected options decay the moment the code moves, and they decay silently — a slide showing a
-function that no longer exists is worse than no slide, because it is presented with confidence. The
-regions cost four pairs of comments in the source and remove the failure mode entirely. Line ranges
-were considered instead of regions and rejected for the same reason at one remove: `{45-60}` is
-correct until somebody adds an import.
-
-The second-order benefit is the one that changed how the talk is delivered. Because the snippet
-carries click-stepped highlighting, the alternative to "switch to the IDE and scroll" is a slide
-that already has the right lines lit up in the right order. Combined with short silent screen
-recordings for the parts that must move, the demo stops depending on a live app behaving during a
-recording.
-
-**Ramification:** `#region` comments in production source exist for the benefit of something outside
-it. They are inert and conventional, but they are a coupling, and someone deleting one will not get
-an error — the deck will just build with a smaller snippet than intended.
-
-The deck is deliberately outside the pnpm workspace: it pulls in Vue, a second Vite and a Chromium
-for PDF export, none of which belong in the dependency graph of the application under review. That
-costs one flag, `pnpm install --ignore-workspace`, and the reason is written in `deck/README.md`
-because the failure without it is silent — pnpm installs the application's dependencies instead and
-reports success.
-
----
-
 ## The connection pool logs idle-client errors instead of dying
 
 `apps/api/src/db/client.ts`
