@@ -262,7 +262,7 @@ export function NegotiationRoute() {
             {negotiation.tierQuantity === AS_QUOTED
               ? "Every line at the quantity its own row was quoted for"
               : `${qty(negotiation.tierQuantity)} units per line`}
-            , three suppliers, all bidding on the same basket.
+            , four suppliers, all bidding on the same basket.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {negotiation.constraintSummary.map((line) => (

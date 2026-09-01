@@ -392,7 +392,7 @@ erDiagram
 
 Three things in that diagram carry most of the design:
 
-- **`negotiations` has one row per negotiation, not one per supplier.** All three suppliers bid on the
+- **`negotiations` has one row per negotiation, not one per supplier.** All four suppliers bid on the
   same basket, so capacity, coverage and the award are properties of the negotiation. The curveball is
   a single write to `capacity`, which is what lets it be absorbed rather than restarted.
 - **`purchase_orders` hangs off the negotiation, not the quotation.** A split award writes one row per

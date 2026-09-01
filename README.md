@@ -149,7 +149,7 @@ Four steps, and it is worth knowing which one failed if it does.
 | 1 | `pnpm install` | Usually a Node or pnpm version mismatch. Check both against the table above |
 | 2 | `pnpm db:up` | Docker is not running, or port 5433 is taken — see [Ports](#ports) |
 | 3 | `pnpm db:push` | Drizzle pushing the schema. Almost always a step-2 failure surfacing late |
-| 4 | `pnpm db:seed` | Loads `products.csv` and the three supplier profiles |
+| 4 | `pnpm db:seed` | Loads `products.csv` and the four supplier profiles |
 
 Steps 2–4 are re-runnable. `pnpm db:reset` drops the volume and redoes all three from scratch, which
 is the right move any time the database is in a state you do not recognise.
@@ -350,9 +350,9 @@ because online it is about sixteen model calls end to end. If a demo finishes in
 offline. Both modes were measured on the same fixture and pick the same winner, which is the point:
 the model writes the arguments, the arithmetic makes the decision.
 
-Within a round the three suppliers are called concurrently, since none of them can see another's
+Within a round the four suppliers are called concurrently, since none of them can see another's
 answer before replying. That is what keeps a round near the latency of one model call rather than
-three.
+four.
 
 ---
 
@@ -446,7 +446,7 @@ offline stub, so a stalled provider costs one round its flavour rather than stal
 XLSX ──▶ parse ──▶ match to products.csv ──▶ basket
                                                │
                                                ▼
-                        brand agent opens ──▶ 3 supplier agents bid
+                        brand agent opens ──▶ 4 supplier agents bid
                                                │
                                   ┌────────────┴────────────┐
                                   │  round 1 done: SUSPEND  │

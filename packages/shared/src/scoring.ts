@@ -20,6 +20,7 @@ export const COUNTRY_LANDED_COST: Record<string, { freightPerUnit: number; dutyR
   TH: { freightPerUnit: 0.42, dutyRate: 0.082 },
   VN: { freightPerUnit: 0.38, dutyRate: 0.09 },
   CN: { freightPerUnit: 0.31, dutyRate: 0.135 },
+  BD: { freightPerUnit: 0.3, dutyRate: 0.12 },
 };
 
 const DEFAULT_LANDED = { freightPerUnit: 0.4, dutyRate: 0.1 };

@@ -84,7 +84,7 @@ suite("negotiation end to end", () => {
 
     // Every supplier had its say before the negotiation parked.
     const bidders = new Set(rounds.filter((r) => r.offer).map((r) => r.supplierCode));
-    expect(bidders).toEqual(new Set(["supplier_1", "supplier_2", "supplier_3"]));
+    expect(bidders).toEqual(new Set(["supplier_1", "supplier_2", "supplier_3", "supplier_4"]));
 
     sequencesBeforeCurveball = rounds.map((r) => r.sequence);
   });
@@ -333,8 +333,25 @@ suite("a buyer can overrule the recommendation", () => {
       where: eq(schema.negotiations.id, negotiation!.id),
     });
     const award = row!.award!;
-    const other = award.scores.find((s) => s.optionId !== award.winningOptionId);
-    expect(other, "the fixture should produce more than one plan").toBeDefined();
+
+    // The race only exists if the two tabs are committing genuinely different
+    // plans. With the cheapest supplier now winning outright, the first "other"
+    // score can be the same single-supplier allocation as the recommendation,
+    // in which case the two commits share an idempotency key and the replay
+    // path makes both "succeed". Pick an option whose allocations really differ
+    // from the winner's so the keys cannot collide.
+    const winnerKeys = award.plan.allocations
+      .map((a) => a.allocationKey)
+      .sort()
+      .join("|");
+    const options = await rebuildOptions(negotiation!.id);
+    const other = options.find(
+      (o) =>
+        o.id !== award.winningOptionId &&
+        award.scores.some((s) => s.optionId === o.id) &&
+        o.allocations.map((a) => a.allocationKey).sort().join("|") !== winnerKeys,
+    );
+    expect(other, "the fixture should produce a plan that differs from the winner").toBeDefined();
 
     // Two different plans produce different allocation keys and different terms
     // hashes, so the unique index on idempotency_key never fires. Nothing but
@@ -350,7 +367,7 @@ suite("a buyer can overrule the recommendation", () => {
         negotiationId: negotiation!.id,
         idempotencyKey: `race-${negotiation!.id}`,
         saveAsDraft: false,
-        optionId: other!.optionId,
+        optionId: other!.id,
       }),
     ]);
 

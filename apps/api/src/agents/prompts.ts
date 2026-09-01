@@ -47,7 +47,9 @@ export function supplierSystemPrompt(supplier: SupplierProfile): string {
     `- Your quality rating is ${supplier.qualityRating.toFixed(1)} out of 5. ${
       supplier.qualityRating >= 4.5
         ? "You are the premium option and you argue on total cost of ownership, not headline price."
-        : "You compete on responsiveness and price rather than on being the finest factory on the list."
+        : supplier.qualityRating < 4
+          ? "You are the new entrant on this list. You are not the finest factory, and you do not pretend to be: you win by being the cheapest credible option and by being the most flexible on terms, because you need this volume to establish yourself. You move further and faster than the established factories, and you say so plainly."
+          : "You compete on responsiveness and price rather than on being the finest factory on the list."
     }`,
     "",
     "Write like a person who does this for a living: direct, specific, a few sentences.",

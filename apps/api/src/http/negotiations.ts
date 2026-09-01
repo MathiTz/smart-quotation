@@ -25,7 +25,7 @@ const start = createRoute({
   path: "/negotiations",
   summary: "Start a negotiation from a parsed quotation",
   description:
-    "Kicks off the brand agent against all three supplier agents. Returns immediately; follow progress on the SSE stream.",
+    "Kicks off the brand agent against all four supplier agents. Returns immediately; follow progress on the SSE stream.",
   request: {
     body: {
       content: {

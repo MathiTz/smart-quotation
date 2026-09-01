@@ -11,7 +11,7 @@ export const paymentTermsSchema = z
   .regex(/^\d{1,3}(\/\d{1,3})*$/, 'payment terms must look like "40/60", "33/33/33" or "100"');
 
 export const supplierProfileSchema = z.object({
-  code: z.enum(["supplier_1", "supplier_2", "supplier_3"]),
+  code: z.enum(["supplier_1", "supplier_2", "supplier_3", "supplier_4"]),
   name: z.string(),
   country: z.string().length(2),
   qualityRating: z.number().min(0).max(5),
@@ -153,6 +153,24 @@ export const SUPPLIER_PROFILES: readonly SupplierProfile[] = [
     maxRebatePct: 5,
     maxFreightAllowancePerUnit: 0.12,
     moqPerLine: 300,
+  },
+  {
+    code: "supplier_4",
+    name: "Dhaka Newline Apparel",
+    country: "BD",
+    qualityRating: 3.5,
+    leadTimeDays: 35,
+    paymentTerms: "50/50",
+    // The new entrant: undercuts the incumbent to win its first big order, so
+    // it opens cheapest and has the most room to keep giving.
+    openingMultiplier: 0.95,
+    floorRatio: 0.8,
+    minLeadTimeDays: 28,
+    // Flexible on terms because it needs the volume more than the margin.
+    bestPaymentTerms: "30/70",
+    maxRebatePct: 8,
+    maxFreightAllowancePerUnit: 0.25,
+    moqPerLine: 400,
   },
 ];
 

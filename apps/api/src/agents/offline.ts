@@ -152,6 +152,12 @@ function supplierMessage(
     );
   }
 
+  if (supplier.qualityRating < 4) {
+    parts.push(
+      `I will be straight with you: we are not the highest-rated factory on your list, and I am not going to pretend otherwise. What we are is the cheapest credible option, and I will move further on price and terms than the established names because we need this order to prove ourselves.`,
+    );
+  }
+
   return parts.join(" ");
 }
 
@@ -161,7 +167,7 @@ export function offlineBrandOpening(brief: NegotiationBrief): string {
     brief.baselineLineCount < brief.lineCount
       ? `I am holding a quotation worth ${money(brief.baselineTotal)} on ${brief.baselineLineCount} of them.`
       : `I am holding a quotation worth ${money(brief.baselineTotal)} on all of them.`,
-    `I am running the same basket past all three of you at once, so treat this as your best pass rather than an opening position.`,
+    `I am running the same basket past all four of you at once, so treat this as your best pass rather than an opening position.`,
   ];
 
   if (brief.priorities.length > 0) {
